@@ -59,7 +59,8 @@ def read_text(path):
         return None
     if b"\0" in data[:8192]:
         return None
-    return data.decode("utf-8", errors="replace")
+    # Newlines are normalised so that a CRLF checkout hashes and parses like an LF one.
+    return data.decode("utf-8", errors="replace").replace("\r\n", "\n")
 
 
 INDEX_SCRIPT = """

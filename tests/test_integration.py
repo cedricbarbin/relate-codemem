@@ -163,3 +163,12 @@ def test_embeddings_follow_text_and_model_changes(project, monkeypatch, capsys):
     monkeypatch.setenv("RELATE_CODEMEM_EMBEDDING_MODEL", "hash-16-b")   # another model: vectors are rebuilt
     assert embeddings.embed_pass(quiet=True) == total
     assert embeddings.read_marker()["model"] == "hash-16-b"
+
+
+def test_crlf_files_index_like_lf_files(project, monkeypatch):
+    monkeypatch.setenv("RELATE_CODEMEM_EMBEDDINGS", "none")
+    seed(project)
+    notes = project / "docs" / "meetings" / "2026-11-20-kickoff.md"
+    notes.write_bytes(notes.read_text().replace("\n", "\r\n").encode())
+    indexer.index(quiet=True)
+    assert q("MATCH (p:Person) RETURN p.name AS n ORDER BY n") == [{"n": "Alice Martin"}, {"n": "Bob Chen"}]

@@ -136,7 +136,14 @@ def run(script, params=None, read_only=False, timeout=180):
         for attempt in range(6):
             proc = subprocess.run(cmd, input=script, capture_output=True, text=True,
                                   encoding="utf-8", errors="replace", env=env, timeout=timeout)
-            if proc.returncode != 5:            # 5 = store locked by another opener: retry
+            crashed = proc.returncode not in (0, 1, 2, 5, 6, 7)
+            if proc.returncode == 5:            # store locked by another opener: retry
+                pass
+            elif crashed and read_only and attempt < 3:
+                # relate.exe 1.2.0 intermittently dies with an access violation when a
+                # read-only open follows a writer on Windows; a read is safe to repeat.
+                log(f"relate exited abnormally ({proc.returncode}) on a read; retrying")
+            else:
                 break
             time.sleep(0.25 * (attempt + 1))
     finally:

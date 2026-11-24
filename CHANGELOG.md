@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- Files with CRLF line endings are normalised before hashing and parsing.
+- A read that hits an abnormal exit of the relate binary (seen on Windows) is retried.
+
 ## 0.1.0 - 2026-11-24
 
 First public version. Early development: interfaces may change before 1.0.
