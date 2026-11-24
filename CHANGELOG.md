@@ -23,7 +23,7 @@ All notable changes to this project are documented here. The format follows
   resolved through what the calling file can see, the receiver's written
   type, inheritance and the argument count. Each link carries `via`,
   `distance` and `candidates`. `relate-codemem symbol NAME` lists calls and
-  callers.
+  callers. A full re-analysis clears the calls it no longer finds.
 
 ### Changed
 

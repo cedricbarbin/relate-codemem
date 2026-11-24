@@ -116,3 +116,9 @@ def test_calls_are_stored_and_follow_other_files(project, monkeypatch, capsys):
     target.write_text(target.read_text().replace("save()", "store()"))
     assert indexer.index(quiet=True) == (1, 0)
     assert "Customer.save" not in callees() and "Customer" in callees()
+
+
+    # another analysis mechanism (here: no parser, so no call graph) leaves no stale call behind
+    monkeypatch.setenv("RELATE_CODEMEM_PARSER", "regex")
+    indexer.index(quiet=True)
+    assert store.read("MATCH ()-[r:CALLS]->() RETURN count(r) AS n") == [{"n": 0}]

@@ -332,7 +332,8 @@ def index(paths=None, full=False, session=None, quiet=False):
                     for path in part for target, via in sorted(edges[path].items())]})
             # Calls are resolved after dependencies: a call only reaches what its file can see.
             calls = deps.resolve_calls(facts, edges, live)
-            rewrite = sorted(path for path in set(calls) | set(old_calls)
+            # every re-analysed file is rewritten, so that a full run also clears calls it no longer finds
+            rewrite = sorted(path for path in set(calls) | set(old_calls) | touched
                              if path in live and (path in touched or calls.get(path) != old_calls.get(path)))
             for start in range(0, len(rewrite), 200):
                 part = rewrite[start:start + 200]
