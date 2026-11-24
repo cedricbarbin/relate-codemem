@@ -37,6 +37,9 @@ def build_parser():
     a = sub.add_parser("index", help="analyse the project: hashes, revisions, symbols, docs, embeddings")
     a.add_argument("paths", nargs="*")
     a.add_argument("--full", action="store_true", help="re-extract every file (no new revision)")
+    a.add_argument("--rebuild", action="store_true",
+                   help="delete symbols, chunks, dependencies, calls and their embeddings, then analyse "
+                        "everything again; revisions, sessions, decisions and notes are kept")
     a.add_argument("--no-embed", action="store_true")
     a = sub.add_parser("embed", help="compute missing embeddings")
     a.add_argument("--reset", action="store_true", help="rebuild all vectors")
@@ -120,7 +123,7 @@ def main(argv=None):
                 embeddings.embed_pass()
             print("\nrestart Claude Code in this project to load the hooks and the MCP server.")
         elif args.cmd == "index":
-            indexer.index(args.paths or None, full=args.full)
+            indexer.index(args.paths or None, full=args.full, rebuild=args.rebuild)
             if not args.no_embed:
                 embeddings.embed_pass()
         elif args.cmd == "embed":

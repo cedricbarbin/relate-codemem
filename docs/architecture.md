@@ -81,8 +81,17 @@ On each indexing pass:
 4. A deleted file gets a final revision flagged `deleted` and stays in the
    graph; if it comes back, numbering continues.
 
-`index --full` re-extracts every file without creating revisions, for use
-after an upgrade that changes extraction.
+`index --full` re-extracts every file in place without creating revisions.
+It runs by itself when the stored facts were built by another version or
+another parser.
+
+`index --rebuild` goes further, for a change of mechanism or a store you no
+longer trust: it first deletes everything derived from file contents
+(symbols, chunks, modules, dependencies, calls and their embeddings), then
+analyses every file. Files and their revisions, sessions, prompts and
+replies, decisions, notes and meetings are kept. The price is that every
+embedding is computed again and that symbols lose their own history
+(`sinceRev`, `changedRev` restart at the current revision).
 
 ### How code is parsed
 

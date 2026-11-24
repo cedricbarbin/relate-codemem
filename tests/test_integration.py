@@ -207,3 +207,34 @@ def test_same_package_dependencies_follow_other_files(project, monkeypatch, caps
     assert indexer.index(["src/main/java/com/acme/Customer.java"], quiet=True) == (2, 0)
     assert [u["p"] for u in uses()] == ["src/main/java/com/acme/Customer.java"]
     assert q("MATCH (f:File) WHERE f.deleted = false RETURN max(f.revision) AS rev") == [{"rev": 1}]
+
+
+def test_rebuild_starts_the_analysis_again_and_keeps_the_history(project, monkeypatch, capsys):
+    monkeypatch.setenv("RELATE_CODEMEM_EMBEDDINGS", "fake")
+    seed(project)
+    indexer.index(quiet=True)
+    path = project / "src" / "app" / "config.py"
+    path.write_text(path.read_text() + "\n\ndef extra():\n    return 1\n")
+    indexer.index(quiet=True)
+    assert cli.main(["note", "keep", "me", "--slot", "test/rebuild"]) == 0
+    embeddings.embed_pass(quiet=True)
+    # leftovers of an older mechanism: a symbol no file defines, a module nothing imports
+    store.write("CREATE (:Symbol:Searchable {id: 'ghost::old', name: 'old', title: 'old', text: 'old'}), (:Module {name: 'ghost'})")
+
+    def state():
+        return q("MATCH (s:Symbol) WITH count(s) AS symbols, count(s.embedding) AS embedded "
+                 "RETURN symbols, embedded, COUNT { (c:Chunk) } AS chunks, COUNT { ()-[:DEPENDS_ON]->() } AS deps, "
+                 "COUNT { (v:FileRevision) } AS revisions, COUNT { (n:Note) } AS notes, "
+                 "COUNT { (m:Module) } AS modules")[0]
+
+    before = state()
+    assert cli.main(["index", "--rebuild", "--no-embed"]) == 0
+    after = state()
+    assert "removed" in capsys.readouterr().out
+    assert q("MATCH (s:Symbol {id: 'ghost::old'}) RETURN count(s) AS n") == [{"n": 0}]
+    assert after["symbols"] == before["symbols"] - 1 and after["modules"] == before["modules"] - 1
+    assert after["embedded"] == 0                                       # vectors are computed again
+    for key in ("chunks", "deps", "revisions", "notes"):
+        assert after[key] == before[key], key
+    assert q("MATCH (f:File {path: 'src/app/config.py'}) RETURN f.revision AS rev") == [{"rev": 2}]
+    assert embeddings.embed_pass(quiet=True) > 0

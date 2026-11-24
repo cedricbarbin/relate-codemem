@@ -216,12 +216,40 @@ def save_state(state):
     tmp.replace(state_path())
 
 
-def index(paths=None, full=False, session=None, quiet=False):
+# What a rebuild throws away: everything derived from file contents. Files, their revisions,
+# sessions, decisions, notes and meetings stay.
+DERIVED = (("symbols", "MATCH (n:Symbol)", "DETACH DELETE n"),
+           ("chunks", "MATCH (n:Chunk)", "DETACH DELETE n"),
+           ("modules", "MATCH (n:Module)", "DETACH DELETE n"),
+           ("dependencies", "MATCH (:File)-[n:DEPENDS_ON]->()", "DELETE n"))
+
+
+def clear_derived(quiet=False):
+    """Caller holds write_lock(). Deletes in batches, so that a large store stays within one
+    transaction's reach."""
+    for label, match, delete in DERIVED:
+        total = store.run(f"{match} RETURN count(n) AS n", read_only=True)[-1][0]["n"]
+        for _ in range(0, total, 5000):
+            store.write(f"{match} WITH n LIMIT 5000 {delete}")
+        if not quiet:
+            print(f"  removed {total} {label}")
+    for stale in (deps_path(), state_path()):
+        stale.unlink(missing_ok=True)
+
+
+def index(paths=None, full=False, session=None, quiet=False, rebuild=False):
     """Incremental index. A file whose sha256 differs from the stored one gets a new
     revision (File.revision + 1, a FileRevision node chained by PREVIOUS); unchanged
-    files cost a stat() only. `paths` limits the run; without it, deletions are detected."""
+    files cost a stat() only. `paths` limits the run; without it, deletions are detected.
+    `full` re-extracts every file in place; `rebuild` first deletes everything derived from
+    file contents (symbols, chunks, modules, dependencies, calls and their embeddings)."""
     store.ensure_store()
     with store.write_lock():
+        if rebuild:
+            if not quiet:
+                print("rebuilding the code analysis from an empty state:")
+            clear_derived(quiet)
+            full, paths = True, None
         known = {r["path"]: r for r in store.run(
             "MATCH (f:File) WHERE f.revision IS NOT NULL "
             "RETURN f.path AS path, f.hash AS hash, f.revision AS rev", read_only=True)[-1]}

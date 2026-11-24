@@ -78,7 +78,7 @@ to your shell profile; restart the terminal (and Claude Code) afterwards.
 uv tool upgrade relate-codemem
 relate-codemem setup            # refreshes the skill
 relate-codemem init             # in each project: refreshes hooks and the CLAUDE.md section
-relate-codemem index --full     # only if release notes say extraction changed
+relate-codemem index --rebuild  # only if release notes say the analysis changed: starts it again from scratch
 ```
 
 If you installed from a checkout, pull the repository and rerun the installer

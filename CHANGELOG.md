@@ -25,6 +25,10 @@ All notable changes to this project are documented here. The format follows
   `distance` and `candidates`. `relate-codemem symbol NAME` lists calls and
   callers. A full re-analysis clears the calls it no longer finds.
 
+- `index --rebuild` deletes everything derived from file contents (symbols,
+  chunks, modules, dependencies, calls, embeddings) and analyses the project
+  again; revisions, sessions, decisions and notes are kept.
+
 ### Changed
 
 - File dependencies are resolved from declared symbols instead of guessed
