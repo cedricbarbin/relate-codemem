@@ -21,7 +21,7 @@ earlier sessions, and lets Claude search it.
 
 Works on macOS, Linux and Windows.
 
-> **Status: 0.1.0, early development.** The graph model, the command names and
+> **Status: 0.1.x, early development.** The graph model, the command names and
 > the configuration keys may still change before 1.0. Developed and tested on
 > macOS; the Linux and Windows paths are covered by CI only.
 
@@ -176,8 +176,8 @@ rebuilds the project's vectors on the next `relate-codemem embed`. All settings:
   (`config` finds `parseConfig` and `parse_config`).
 - Timestamps are shown in UTC.
 - Windows: relate 1.2.0 is unstable there when a read-only open follows a write,
-  so reads are serialised with writes. The read-only MCP server is untested on
-  Windows.
+  so reads are serialised with writes. The read-only MCP server is covered by a CI
+  test on Windows.
 
 ## Uninstall
 

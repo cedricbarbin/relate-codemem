@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.1.1 - 2026-11-24
+
 ### Fixed
 
 - On Windows, console windows no longer flash on every hook and at start-up:
