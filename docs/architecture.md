@@ -50,7 +50,7 @@ parameters through a JSON file. See
 ```
 (FileRevision)-[:REVISION_OF]->(File)        (FileRevision)-[:PREVIOUS]->(FileRevision)
 (Symbol)-[:DEFINED_IN]->(File)               (Chunk)-[:PART_OF]->(File)
-(File)-[:DEPENDS_ON]->(File)                 (File)-[:IMPORTS]->(Module)
+(File)-[:DEPENDS_ON {via}]->(File)           (File)-[:IMPORTS]->(Module)
 (Decision)-[:DOCUMENTED_IN]->(File)          (Decision|Note)-[:AFFECTS]->(File)
 (Decision|Note)-[:SUPERSEDES]->(same label)  (Decision|Note)-[:MADE_IN]->(Session)
 (Meeting)-[:RECORDED_IN]->(File)             (Person)-[:ATTENDED]->(Meeting)
@@ -82,6 +82,35 @@ On each indexing pass:
 
 `index --full` re-extracts every file without creating revisions, for use
 after an upgrade that changes extraction.
+
+### Dependencies between files
+
+A `DEPENDS_ON` relationship is resolved from declared symbols, not only from
+import lines. Each code file is reduced to a few facts: its package or
+namespace, the names it declares, its imports and the names its code uses
+(comments and string literals excluded). Its `via` property says where the
+link comes from:
+
+| `via` | Meaning | Languages |
+| --- | --- | --- |
+| `import` | an import that names the file, or a type or function it declares | all |
+| `wildcard` | `import a.b.*`, `using A.B;`: a declared name of that package is used | Java, Kotlin, Scala, C# |
+| `qualified` | a fully qualified name written in the code | Java, Kotlin, Scala, C#, PHP |
+| `package` | a name of the same package, used without any import | Java, Kotlin, Scala, C#, PHP, Go |
+
+Types are found by their qualified name wherever the file lives, so
+multi-module layouts need no configuration. Other languages (Python,
+JavaScript and TypeScript, Rust, C, Ruby...) keep resolving imports to paths.
+
+The facts are stored in `.claude/relate/deps.json` and edges are resolved over
+all of them on every run. An unchanged file is not read again and gets no new
+revision, yet it gains or loses a dependency when another file starts or stops
+declaring a name it uses. A store that has no facts yet is analysed again in
+full on the next run.
+
+The analysis is lexical. A name used in the code links to the file that
+declares it in a visible package; there is no type inference, so `x.close()`
+says nothing about the class of `x`.
 
 Decisions and notes follow the same no-delete rule on the knowledge side: an
 entry written with the `--slot` of an existing current entry, or with

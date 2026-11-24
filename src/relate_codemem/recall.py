@@ -200,7 +200,9 @@ def show_file(path):
         "RETURN s.kind AS kind, s.qualname AS name, s.startLine AS line, s.endLine AS endLine, "
         "s.sinceRev AS since, s.changedRev AS changed ORDER BY s.startLine LIMIT 200;"
         "MATCH (f:File {path: $p.path}) RETURN "
-        "COLLECT { MATCH (f)-[:DEPENDS_ON]->(t:File) WHERE t.deleted = false RETURN t.path ORDER BY t.path } AS uses, "
+        "COLLECT { MATCH (f)-[r:DEPENDS_ON]->(t:File) WHERE t.deleted = false "
+        "RETURN t.path + CASE WHEN coalesce(r.via, 'import') = 'import' THEN '' ELSE ' (' + r.via + ')' END "
+        "ORDER BY t.path } AS uses, "
         "COLLECT { MATCH (o:File)-[:DEPENDS_ON]->(f) WHERE o.deleted = false RETURN o.path ORDER BY o.path } AS usedBy, "
         "COLLECT { MATCH (f)-[:IMPORTS]->(m:Module) RETURN m.name ORDER BY m.name LIMIT 40 } AS imports;"
         "MATCH (d)-[:AFFECTS|DOCUMENTED_IN]->(:File {path: $p.path}) WHERE d:Decision OR d:Note "
@@ -288,7 +290,8 @@ MODEL_DOC = """Graph model (labels, key property, relationships)
   Prompt {id} / Reply {id}   title, text, at, session        ToolCall {id}  tool, summary, path, at
   (FileRevision)-[:REVISION_OF]->(File)     (FileRevision)-[:PREVIOUS]->(FileRevision)
   (Symbol)-[:DEFINED_IN]->(File)            (Chunk)-[:PART_OF]->(File)
-  (File)-[:DEPENDS_ON]->(File)              (File)-[:IMPORTS]->(Module)
+  (File)-[:DEPENDS_ON {via}]->(File)        (File)-[:IMPORTS]->(Module)
+  DEPENDS_ON.via = import | qualified | wildcard | package (same package, no import)
   (Decision)-[:DOCUMENTED_IN]->(File)       (Decision|Note)-[:AFFECTS]->(File)
   (Decision|Note)-[:SUPERSEDES]->(same)     (Decision|Note)-[:MADE_IN]->(Session)
   (Meeting)-[:RECORDED_IN]->(File)          (Person)-[:ATTENDED]->(Meeting)

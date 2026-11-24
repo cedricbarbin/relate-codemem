@@ -93,7 +93,7 @@ relate-codemem index
 
 | Source | In the graph | Written by |
 | --- | --- | --- |
-| Code (30+ file types) | `File`, `FileRevision`, `Symbol`, `Module`, file dependencies | hooks, `index` |
+| Code (30+ file types) | `File`, `FileRevision`, `Symbol`, `Module`, file dependencies (imports, same-package and qualified references) | hooks, `index` |
 | Documentation (`*.md`, `*.rst`, `*.txt`, ...) | `File`, `Chunk` per section | hooks, `index` |
 | Decisions in `docs/decisions/` (ADRs) | `Decision`, `Chunk` | hooks, `index` |
 | Decisions made in a session | `Decision`, `Note` | Claude, with `decide` and `note` |

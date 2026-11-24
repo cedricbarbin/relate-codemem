@@ -2,11 +2,10 @@
 file revisions."""
 import json
 import os
-import posixpath
 import subprocess
 from pathlib import Path
 
-from . import config, store
+from . import config, deps, store
 from .extract import (cfg, chunk_text, classify, excluded, extract_imports, extract_symbols,
                       parse_decision, parse_meeting, sha, split_terms, under)
 
@@ -171,11 +170,20 @@ SET x.closedAt = coalesce(x.closedAt, datetime($p.now)), x.status = 'deleted'
 """
 
 DEPS_SCRIPT = """
+UNWIND $p.paths AS path
+MATCH (f:File {path: path})-[r:DEPENDS_ON]->()
+DELETE r;
+
 UNWIND $p.deps AS d
 MATCH (f:File {path: d.path})
 MATCH (t:File {path: d.target}) WHERE t.deleted = false
-MERGE (f)-[:DEPENDS_ON]->(t)
+MERGE (f)-[r:DEPENDS_ON]->(t)
+SET r.via = d.via
 """
+
+
+def deps_path():
+    return store.home() / "deps.json"
 
 
 def state_path():
@@ -204,6 +212,13 @@ def index(paths=None, full=False, session=None, quiet=False):
         known = {r["path"]: r for r in store.run(
             "MATCH (f:File) WHERE f.revision IS NOT NULL "
             "RETURN f.path AS path, f.hash AS hash, f.revision AS rev", read_only=True)[-1]}
+        loaded = None if full else deps.load(deps_path())
+        if loaded is None and not full and known:
+            # a store indexed before dependency facts existed (or with another format)
+            full, paths = True, None
+            if not quiet:
+                print("dependency facts are missing or outdated: analysing every file again")
+        facts, old_edges = loaded or ({}, {})
         state = {} if full else load_state()
         if paths:
             targets = []
@@ -250,26 +265,20 @@ def index(paths=None, full=False, session=None, quiet=False):
         info = git_info()
         base = {"now": store.now_iso(), "commit": info["commit"], "branch": info["branch"],
                 "session": session, "sessions": [session] if session else []}
-        existing = set(known) | {c[0] for c in changed}
-        deps, counts = [], {"symbols": 0, "chunks": 0}
+        counts = {"symbols": 0, "chunks": 0}
         for start in range(0, max(len(changed), 1), 150):
             batch = changed[start:start + 150]
             p = dict(base, files=[], symbols=[], chunks=[], imports=[], adrs=[], meetings=[],
                      deleted=deleted if start == 0 else [])
             for path, (kind, lang), text, digest, rev, size in batch:
                 symbols, chunks = [], []
+                facts.pop(path, None)
                 if kind == "code":
                     symbols = extract_symbols(path, text, lang, rev)
-                    seen = set()
-                    for module, cands in extract_imports(path, text, lang):
-                        if module and module not in seen:
-                            seen.add(module)
-                            p["imports"].append({"path": path, "module": module[:200]})
-                        for cand in cands:
-                            cand = posixpath.normpath(cand)
-                            if cand in existing and cand != path:
-                                deps.append({"path": path, "target": cand})
-                                break
+                    imports = extract_imports(path, text, lang)
+                    for module in dict.fromkeys(module for module, _ in imports if module):
+                        p["imports"].append({"path": path, "module": module[:200]})
+                    facts[path] = deps.facts(path, text, lang, symbols, imports)
                 elif kind in ("doc", "decision", "meeting"):
                     meta, chunks = chunk_text(path, text, kind)
                     if kind == "decision":
@@ -288,8 +297,23 @@ def index(paths=None, full=False, session=None, quiet=False):
                     print(f"  {min(start + 150, len(changed))}/{len(changed)} files", flush=True)
                 counts["symbols"] += len(p["symbols"])
                 counts["chunks"] += len(p["chunks"])
-        if deps:
-            store.write(DEPS_SCRIPT, {"deps": deps})
+        if changed or deleted:
+            # Dependencies are resolved over the facts of every file, so that an unchanged
+            # file gains or loses an edge when a name it uses appears or disappears elsewhere.
+            gone = {d["path"] for d in deleted}
+            for path in gone:
+                facts.pop(path, None)
+            touched = {c[0] for c in changed}
+            live = ({path for path, row in known.items() if row["hash"] is not None} | touched) - gone
+            edges = deps.resolve(facts, live)
+            rewrite = sorted(path for path, found in edges.items()
+                             if path in touched or found != old_edges.get(path, {}))
+            for start in range(0, len(rewrite), 400):
+                part = rewrite[start:start + 400]
+                store.write(DEPS_SCRIPT, {"paths": part, "deps": [
+                    {"path": path, "target": target, "via": via}
+                    for path in part for target, via in sorted(edges[path].items())]})
+            deps.save(deps_path(), facts, edges)
         save_state(new_state)
     summary = (f"indexed {len(changed)} changed file(s), {len(deleted)} deleted, "
                f"{counts['symbols']} symbols, {counts['chunks']} chunks")

@@ -172,3 +172,38 @@ def test_crlf_files_index_like_lf_files(project, monkeypatch):
     notes.write_bytes(notes.read_text().replace("\n", "\r\n").encode())
     indexer.index(quiet=True)
     assert q("MATCH (p:Person) RETURN p.name AS n ORDER BY n") == [{"n": "Alice Martin"}, {"n": "Bob Chen"}]
+
+
+def test_same_package_dependencies_follow_other_files(project, monkeypatch, capsys):
+    monkeypatch.setenv("RELATE_CODEMEM_EMBEDDINGS", "none")
+    pkg = project / "src" / "main" / "java" / "com" / "acme"
+    pkg.mkdir(parents=True)
+    (pkg / "Invoice.java").write_text("package com.acme;\n\nclass Invoice {\n    LineItem item;\n    Customer customer;\n}\n")
+    (pkg / "LineItem.java").write_text("package com.acme;\n\nclass LineItem {\n}\n")
+    indexer.index(quiet=True)
+
+    def uses():
+        return q("MATCH (:File {path: 'src/main/java/com/acme/Invoice.java'})-[r:DEPENDS_ON]->(t) "
+                 "RETURN t.path AS p, r.via AS via ORDER BY p")
+
+    assert uses() == [{"p": "src/main/java/com/acme/LineItem.java", "via": "package"}]
+
+    # a class appears in the package: the unchanged Invoice.java gains a dependency, no new revision
+    (pkg / "Customer.java").write_text("package com.acme;\n\nclass Customer {\n}\n")
+    assert indexer.index(["src/main/java/com/acme/Customer.java"], quiet=True) == (1, 0)
+    assert [u["p"] for u in uses()] == ["src/main/java/com/acme/Customer.java", "src/main/java/com/acme/LineItem.java"]
+    assert q("MATCH (f:File {path: 'src/main/java/com/acme/Invoice.java'}) RETURN f.revision AS rev") == [{"rev": 1}]
+
+    capsys.readouterr()
+    assert cli.main(["file", "src/main/java/com/acme/Invoice.java"]) == 0
+    assert "LineItem.java (package)" in capsys.readouterr().out
+
+    (pkg / "LineItem.java").unlink()
+    assert indexer.index(quiet=True) == (0, 1)
+    assert [u["p"] for u in uses()] == ["src/main/java/com/acme/Customer.java"]
+
+    # a store indexed before the facts existed is analysed again in full, without new revisions
+    indexer.deps_path().unlink()
+    assert indexer.index(["src/main/java/com/acme/Customer.java"], quiet=True) == (2, 0)
+    assert [u["p"] for u in uses()] == ["src/main/java/com/acme/Customer.java"]
+    assert q("MATCH (f:File) WHERE f.deleted = false RETURN max(f.revision) AS rev") == [{"rev": 1}]

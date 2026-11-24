@@ -266,6 +266,13 @@ def extract_imports(path, text, lang):
                     cands += [target[:-3] + ".ts", target[:-3] + ".tsx"]
             elif lang == "rust" and "::" not in mod:
                 cands = [(base / f"{mod}.rs").as_posix(), (base / mod / "mod.rs").as_posix()]
+            elif lang == "rust" and mod.startswith("crate::"):
+                # the module file is the longest prefix of the path that exists under src/
+                root = path[:path.rfind("/src/") + 5] if "/src/" in path else ("src/" if path.startswith("src/") else "")
+                parts = mod.split("::")[1:]
+                for cut in range(len(parts), 0, -1):
+                    stem = root + "/".join(parts[:cut])
+                    cands += [stem + ".rs", stem + "/mod.rs"]
             elif lang in ("java", "kotlin", "scala"):
                 tail = mod.replace(".", "/")
                 cands = [f"{root}/{tail}{ext}" for root in ("src/main/java", "src/main/kotlin", "src/main/scala", "src")

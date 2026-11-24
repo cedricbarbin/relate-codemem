@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+### Changed
+
+- File dependencies are resolved from declared symbols instead of guessed
+  paths: same-package references without an import (Java, Kotlin, Scala, C#,
+  PHP, Go), wildcard imports, fully qualified names, types in any source root,
+  Go package imports and Rust `use crate::...`. `DEPENDS_ON` carries a `via`
+  property (`import`, `wildcard`, `qualified`, `package`).
+- Dependencies of unchanged files follow the rest of the project: they are
+  resolved again from stored facts whenever a file is added, changed or
+  removed. Existing stores are analysed again in full on the first run.
+
 ## 0.1.1 - 2026-11-24
 
 ### Fixed
