@@ -46,7 +46,9 @@ sample:
   language the pack knows still gets the pack's generic, coarser extraction.
 
 Package-level name resolution (same package, wildcard imports) lives in
-`src/relate_codemem/deps.py`.
+`src/relate_codemem/deps.py`. Languages that are not made of functions and
+classes (Terraform, Ansible) have their own reading in
+`src/relate_codemem/iac.py`.
 
 ## Pull requests
 

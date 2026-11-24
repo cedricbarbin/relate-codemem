@@ -5,7 +5,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from . import config, deps, parse, store
+from . import config, deps, iac, parse, store
 from .extract import (cfg, chunk_text, classify, excluded, extract_imports, extract_symbols,
                       parse_decision, parse_meeting, sha, split_terms, under)
 
@@ -349,6 +349,8 @@ def index(paths=None, full=False, session=None, quiet=False, rebuild=False):
                      deleted=deleted if start == 0 else [])
             for path, (kind, lang), text, digest, rev, size in batch:
                 symbols, chunks = [], []
+                if kind == "config" and iac.is_ansible(path, text):
+                    kind, lang = "code", "ansible"          # a YAML file that Ansible reads
                 facts.pop(path, None)
                 if kind == "code":
                     symbols = extract_symbols(path, text, lang, rev)
@@ -356,7 +358,7 @@ def index(paths=None, full=False, session=None, quiet=False, rebuild=False):
                     for module in dict.fromkeys(m for m, _ in imports if m and not m.startswith("?")):
                         p["imports"].append({"path": path, "module": module[:200]})
                     facts[path] = deps.facts(path, text, lang, symbols, imports)
-                    sites = parse.calls(path, text, lang)
+                    sites = None if lang in iac.LANGS else parse.calls(path, text, lang)
                     if sites is not None:
                         facts[path].update(deps.call_facts(path, text, lang, symbols, sites))
                 elif kind in ("doc", "decision", "meeting"):

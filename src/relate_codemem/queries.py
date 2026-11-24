@@ -246,10 +246,13 @@ def library_usage(name=None):
         libraries, calls = store.read_many(
             "MATCH (f:File)-[r:IMPORTS]->(m:Module) WHERE r.scope IN ['external', 'stdlib'] AND f.deleted = false "
             "RETURN m.root AS library, r.scope AS scope, count(DISTINCT f) AS files ORDER BY scope, files DESC, library LIMIT 300;"
-            "MATCH (:Symbol)-[:CALLS]->(e:External) RETURN e.root AS library, count(*) AS calls LIMIT 2000")
+            "MATCH (:Symbol)-[:CALLS]->(e:External) RETURN e.root AS library, e.scope AS scope, count(*) AS calls LIMIT 2000")
+        counts = {r["library"]: r["calls"] for r in calls}
+        known = {r["library"] for r in libraries}
+        # what is used without an import statement (Ansible modules and their collections)
+        libraries += [{"library": r["library"], "scope": r["scope"], "files": 0} for r in calls if r["library"] not in known]
         if not libraries:
             return "No import leading out of the project is recorded (run `relate-codemem index`)."
-        counts = {r["library"]: r["calls"] for r in calls}
         out = []
         for scope, title in (("external", "External libraries"), ("stdlib", "Standard library")):
             rows = [r for r in libraries if r["scope"] == scope]

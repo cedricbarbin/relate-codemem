@@ -6,7 +6,7 @@ import posixpath
 import re
 from pathlib import Path
 
-from . import config, parse
+from . import config, iac, parse
 
 CODE_EXT = {
     ".py": "python", ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript",
@@ -17,6 +17,7 @@ CODE_EXT = {
     ".hpp": "cpp", ".m": "objc", ".mm": "objc", ".sh": "shell", ".bash": "shell", ".zsh": "shell",
     ".sql": "sql", ".lua": "lua", ".r": "r", ".ex": "elixir", ".exs": "elixir",
     ".html": "html", ".css": "css", ".scss": "css", ".cypher": "cypher", ".tf": "terraform",
+    ".tfvars": "terraform",
 }
 DOC_EXT = {".md", ".mdx", ".markdown", ".rst", ".txt", ".adoc", ".org"}
 TRANSCRIPT_EXT = DOC_EXT | {".vtt", ".srt"}
@@ -187,6 +188,8 @@ def extract_symbols(path, text, lang, rev):
     try:
         if lang == "python":
             raw = python_symbols(text)
+        elif lang in iac.LANGS:
+            raw = iac.symbols(path, text, lang)
         elif parse.curated(lang, path) or lang not in PATTERNS:
             raw = parse.symbols(path, text, lang)
         else:                       # a language with patterns but no table: patterns are the better source
@@ -203,7 +206,7 @@ def extract_symbols(path, text, lang, rev):
                     "qualname": s["qualname"], "kind": s["kind"], "startLine": s["startLine"],
                     "endLine": s["endLine"], "signature": s["signature"],
                     "hash": sha(s["body"])[:16], "title": f"{s['kind']} {s['qualname']}", "top": s.get("top"),
-                    "text": (s["signature"] + ("\n" + s["doc"] if s["doc"] else ""))[:900],
+                    "text": s.get("text") or (s["signature"] + ("\n" + s["doc"] if s["doc"] else ""))[:900],
                     "terms": split_terms(s["qualname"], path)})
     return out
 
@@ -234,6 +237,8 @@ def extract_imports(path, text, lang):
     a guess that only counts when one of its candidates exists."""
     out = []
     base = Path(path).parent
+    if lang in iac.LANGS:
+        return [(module, list(candidates)) for module, candidates in iac.imports(path, text, lang)]
     if lang == "python":
         try:
             tree = ast.parse(text)

@@ -15,9 +15,9 @@ import posixpath
 import re
 import sys
 
-from . import parse
+from . import iac, parse
 
-VERSION = 5
+VERSION = 6
 
 # origin of an edge, strongest first
 VIA = ("import", "qualified", "wildcard", "package")
@@ -65,6 +65,8 @@ def facts(path, text, lang, symbols, imports):
 
     `symbols` are the extracted symbols of the file, `imports` the (module, candidate
     paths) pairs from extract_imports."""
+    if lang in iac.LANGS:
+        return iac.facts(path, text, lang, symbols, imports)
     out = {"lang": lang, "imports": [[m, c] for m, c in imports if m][:400],
            "names": imported_names(text, lang, imports)}
     if lang not in PACKAGE_LANGS:
@@ -208,7 +210,7 @@ def call_facts(path, text, lang, symbols, sites):
 
 MAX_CANDIDATES = 3
 # how a callee was chosen, most certain first
-CALL_VIA = ("receiver", "self", "new", "scope", "name")
+CALL_VIA = ("receiver", "self", "new", "scope", "name", "reference")
 
 
 def resolve_calls(files, edges, live, scopes=None):
@@ -381,6 +383,7 @@ def resolve_calls(files, edges, live, scopes=None):
                  "external": sorted({tuple(row[:3]): row for row in outside}.values())}
         if any(links.values()):
             result[path] = links
+    result.update(iac.resolve(files, live))         # Terraform and Ansible have their own references
     return result
 
 
@@ -453,8 +456,10 @@ def external_scope(module, lang):
         return "external" if "." in module.split("/")[0] else "stdlib"
     if lang in ("javascript", "typescript"):
         return "stdlib" if module.startswith("node:") or module.split("/")[0] in _NODE_BUILTINS else "external"
-    if lang in ("c", "cpp", "objc"):
+    if lang in ("c", "cpp", "objc", "terraform"):
         return "external"
+    if lang == "ansible":
+        return "unresolved"             # a role, a task file or a template that is not in the project
     prefixes = _STDLIB_PREFIX.get(lang, ())
     return "stdlib" if any(module == p.rstrip(".:") or module.startswith(p) for p in prefixes) else "external"
 
@@ -467,6 +472,10 @@ def module_root(module, lang):
     if lang == "go":
         parts = module.split("/")
         return "/".join(parts[:3]) if "." in parts[0] else parts[0]
+    if lang == "terraform":             # registry `namespace/name[/provider]`, or an address
+        return module[:80] if "://" in module or module.startswith("git::") else "/".join(module.split("/")[:2])
+    if lang == "ansible":
+        return module.removeprefix("role:").split("/")[0]
     parts = [p for p in re.split(r"[.\\/]|::", module) if p]
     if lang in JVM and len(parts) > 2:
         return ".".join(parts[:2])
@@ -543,7 +552,14 @@ def resolve(files, live, scopes=None):
         lang, fam, key = f["lang"], family(f["lang"]), f.get("package")
         for module, candidates in f.get("imports", ()):
             hit = False
-            if lang == "go":
+            if lang == "terraform" and module.startswith("."):
+                # a module source is a directory: the files that declare something in it
+                target = "tf:" + posixpath.normpath(posixpath.join(posixpath.dirname(path), module))
+                for paths in packages.get(target, {}).values():
+                    for other in paths:
+                        link(other, "import")
+                        hit = True
+            elif lang == "go":
                 target_dir = max((d for d in go_dirs if module == d or module.endswith("/" + d)),
                                  key=len, default=None)
                 if target_dir is not None and go_dirs[target_dir] != key:

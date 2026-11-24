@@ -133,6 +133,52 @@ file is analysed again on the next run: no file revision is created, but
 renamed symbols restart their own history and their embeddings are computed
 again.
 
+### Infrastructure as code: Terraform and Ansible
+
+Neither has functions or classes, so `iac.py` reads each in its own way and
+produces the same things as the other languages. No extra is needed.
+
+**Terraform** (`.tf`, `.tfvars`). One symbol per block, named the way
+Terraform refers to it: `aws_s3_bucket.logs` (kind `resource`),
+`data.aws_ami.base`, `module.vpc`, `var.region`, `output.arn`,
+`local.name`, `provider.aws`. A directory is a module, so a name used in a
+file links it to the file of the same directory that declares it
+(`DEPENDS_ON` with `via: package`); a `.tfvars` file depends on the files
+that declare the variables it sets. A `module` block with a relative
+`source` depends on the files of that directory; registry and git sources,
+and `required_providers`, are external imports. Between blocks,
+`(Symbol)-[:CALLS {via: 'reference'}]->(Symbol)` records each reference,
+including a module block's arguments to the variables of its source and
+`module.x.y` to the output `y`, so `impact var.region` or
+`impact aws_s3_bucket.logs` work.
+
+**Ansible.** YAML files have no extension of their own. A `.yml` or `.yaml`
+file is read as Ansible when it sits in a role (`roles/<name>/tasks`,
+`handlers`, `defaults`, `vars`, `meta`), in a directory named `playbooks`,
+`group_vars`, `host_vars`, `tasks`, `handlers` or `vars`, or when its
+content is a list of plays or tasks. It then becomes a code file of
+language `ansible`:
+
+- symbols: plays, tasks and handlers by their `name` (the body of a task is
+  searchable), and the top-level keys of variable files;
+- dependencies: `import_tasks`, `include_tasks`, `import_playbook`,
+  `include_vars`, `vars_files`, roles (`roles:`, `include_role`,
+  `import_role`, `meta` dependencies) to the files of the role, and
+  `template` and `copy` sources to `templates/` and `files/`;
+- `notify` links a task to the handler of that name, or to the handler that
+  `listen`s to it, looked up in the role, then the directory, then anywhere;
+- the module of each task is an `External` node: `ansible.builtin.*` counts
+  as the standard library, another collection (`community.docker`) as
+  external; a short name (`apt`) cannot be attributed to a collection.
+
+Limits: the recognition by directory can take an unrelated YAML file in a
+`tasks/` directory for Ansible, and miss a playbook whose content is
+unusual. Paths and role names built from variables are skipped. The use of
+variables (`{{ port }}`) is not linked to their definition: Ansible's
+precedence rules decide which one applies, and they are not modelled. YAML
+is read by indentation, without a YAML parser: flow style and multi-document
+files are only partly understood.
+
 ### Dependencies between files
 
 A `DEPENDS_ON` relationship is resolved from declared symbols, not only from

@@ -24,6 +24,8 @@ earlier sessions, and lets Claude search it.
 - **Inside or outside the project.** Imports are classified (project,
   standard library, external library), and calls or supertypes that an
   import proves external are kept apart from the internal graph.
+- **Infrastructure too.** Terraform blocks and Ansible plays, tasks and
+  handlers are symbols, with their references, module and role dependencies.
 - **Hybrid search.** relate's full-text index and its vector index, fused by
   reciprocal rank. Embeddings are computed locally by default.
 - **Everything stays in the project.** The store is a directory under

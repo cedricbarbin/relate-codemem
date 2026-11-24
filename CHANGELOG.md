@@ -59,6 +59,15 @@ All notable changes to this project are documented here. The format follows
 - Project links (repository, documentation, issues, changelog) in the package
   metadata, and absolute links in the README, for the PyPI page.
 
+- Terraform: blocks are symbols (`aws_s3_bucket.logs`, `var.region`,
+  `module.vpc`...), files of a directory depend on each other through the
+  names they use, module sources and providers are resolved, and references
+  between blocks feed `impact`.
+- Ansible: YAML files recognised as playbooks, roles or variable files are
+  indexed as code, with plays, tasks, handlers and variables as symbols,
+  include, role, template and file dependencies, `notify` links to handlers
+  and task modules as external targets.
+
 ### Changed
 
 - Python: `from package import submodule` now creates a dependency on the
