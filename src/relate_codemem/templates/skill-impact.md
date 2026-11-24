@@ -16,7 +16,9 @@ Symbol: $ARGUMENTS
 3. For the direct callers, open the call sites and check that each one really
    calls this symbol. Links marked `name` were matched by name only, and
    `1 of N` means the call had several possible targets.
-4. Report, most affected first: direct callers, then indirect ones, the
+4. Run `tests_for` (`relate-codemem tests <symbol>`) to list the tests that
+   reach the symbol, and name the ones to run after the change.
+5. Report, most affected first: direct callers, then indirect ones, the
    classes and files involved, the implementations or subtypes, and what
    reaches the symbol from outside your reading (tests, entry points).
 

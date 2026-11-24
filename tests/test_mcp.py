@@ -105,7 +105,8 @@ def test_standard_questions_are_tools_and_prompts(project, monkeypatch):
 
     listed = mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
     assert {t["name"] for t in listed} == {"search", "recall", "file_info", "symbol_info", "class_calls",
-                                           "implementations", "impact", "get_schema", "read_cypher"}
+                                           "implementations", "impact", "call_path", "library_usage", "why",
+                                           "tests_for", "diff_impact", "get_schema", "read_cypher"}
     assert all(t["annotations"]["readOnlyHint"] and t["inputSchema"]["type"] == "object" for t in listed)
 
     text, error = call("symbol_info", name="Repo")
@@ -136,7 +137,8 @@ def test_standard_questions_are_tools_and_prompts(project, monkeypatch):
         assert "subtypes (1): FileRepo" in capsys_text
 
     prompts = mcp.handle({"jsonrpc": "2.0", "id": 3, "method": "prompts/list"})["result"]["prompts"]
-    assert {p["name"] for p in prompts} == {"ask", "class-calls", "implementations", "impact"}
+    assert {p["name"] for p in prompts} == {"ask", "class-calls", "implementations", "impact", "call-path",
+                                            "library", "why", "tests", "diff-impact"}
     got = mcp.handle({"jsonrpc": "2.0", "id": 4, "method": "prompts/get",
                       "params": {"name": "impact", "arguments": {"name": "Customer.save"}}})["result"]
     assert "Customer.save" in got["messages"][0]["content"]["text"]

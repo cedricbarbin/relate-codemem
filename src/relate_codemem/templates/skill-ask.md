@@ -21,6 +21,11 @@ Answer it from the project memory graph first, then confirm against the code.
    | what a class or method calls | `class_calls` | `calls NAME` |
    | implementations of an interface, redefinitions | `implementations` | `implementations NAME` |
    | callers and affected classes and files | `impact` | `impact NAME [--depth N]` |
+| tests that reach a method or class | `tests_for` | `tests NAME` |
+| what the current changes affect | `diff_impact` | `diff-impact [REF]` |
+| how A ends up calling B | `call_path` | `path A B` |
+| libraries used, or where one is used | `library_usage` | `uses [LIBRARY]` |
+| why a file is the way it is | `why` | `why PATH` |
    | anything else | `get_schema`, then `read_cypher` | `schema`, then `query "MATCH ... LIMIT 20"` |
 
 2. Treat what comes back as evidence with a date. Open the files it points

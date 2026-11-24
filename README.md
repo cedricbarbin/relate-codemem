@@ -144,12 +144,19 @@ the standard questions, so Claude can answer them without writing a query:
 | `class_calls` | which methods does class X call, inside and outside the project? |
 | `implementations` | which implementations of interface Y exist? |
 | `impact` | what would changing method M of class C affect: calling methods, classes, files? |
+| `call_path` | how does A end up calling B? |
+| `library_usage` | which libraries do we use, and where is library L used? |
+| `why` | why is this file the way it is: decisions, documents, sessions? |
+| `tests_for` | which tests cover this method or class? |
+| `diff_impact` | what do my current changes affect, and which tests reach them? |
 | `get_schema`, `read_cypher` | anything else, in read-only Cypher |
 
 The same questions are offered as MCP prompts (`ask`, `class-calls`,
-`implementations`, `impact`), which Claude Code lists among its slash
-commands under the server's name. The call graph behind `class_calls`,
-`implementations` and `impact` needs the `parse` extra.
+`implementations`, `impact`, `call-path`, `library`, `why`, `tests`,
+`diff-impact`), which Claude Code lists among its slash commands under the
+server's name. The questions that rest on the call graph (`class_calls`,
+`implementations`, `impact`, `call_path`, `tests_for`, `diff_impact`) need
+the `parse` extra.
 
 ## Use it
 
@@ -165,6 +172,11 @@ relate-codemem symbol parse_config                 # definition, hierarchy, call
 relate-codemem calls OrderService                  # what a class (all its methods) or a method calls
 relate-codemem implementations Repository          # subtypes of a type, redefinitions of a method
 relate-codemem impact Customer.save --depth 3      # callers, classes and files affected by a change
+relate-codemem path OrderController.create Mailer.send   # shortest chain of calls between two symbols
+relate-codemem uses                                # libraries the project uses; `uses numpy`: where and how
+relate-codemem why src/billing/invoice.py          # decisions, documents and sessions that explain a file
+relate-codemem tests Invoice.total                 # tests that reach a method or a class
+relate-codemem diff-impact                         # what the uncommitted changes affect (or `diff-impact origin/main`)
 relate-codemem playground                          # explore the graph in Neo4j Browser (read-only, local)
 relate-codemem query "MATCH (f:File) RETURN f.kind, count(*) LIMIT 10"    # read-only Cypher
 relate-codemem decide --title "..." --text "..." --rationale "..." --slot area/topic --files a.py,b.py

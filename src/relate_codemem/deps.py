@@ -17,7 +17,7 @@ import sys
 
 from . import parse
 
-VERSION = 4
+VERSION = 5
 
 # origin of an edge, strongest first
 VIA = ("import", "qualified", "wildcard", "package")
@@ -429,7 +429,7 @@ def imported_names(text, lang, imports):
                 names[alias or last] = [module, ""]
     else:
         for module, _ in imports:
-            if module and not module.endswith((".", "._", "*")):
+            if module and not module.startswith("?") and not module.endswith((".", "._", "*")):
                 names[re.split(r"[.\\/]|::", module)[-1]] = [module, ""]
     return dict(list(names.items())[:400])
 
@@ -569,7 +569,7 @@ def resolve(files, live, scopes=None):
                         link(candidate, "import")
                         hit = True
                         break
-            if scopes is not None:
+            if scopes is not None and not module.startswith("?"):
                 relative = module.startswith(".") or lang in ("c", "cpp", "objc", "shell") and "/" in module
                 scopes.setdefault(path, {})[module] = (
                     "internal" if hit else "unresolved" if relative else external_scope(module, lang))

@@ -230,7 +230,8 @@ for _alias, _src in (("typescript", "javascript"), ("cpp", "c"), ("objc", "c")):
 
 
 def extract_imports(path, text, lang):
-    """-> list of (module name, candidate project paths)."""
+    """-> list of (module name, candidate project paths). A module name starting with "?" is
+    a guess that only counts when one of its candidates exists."""
     out = []
     base = Path(path).parent
     if lang == "python":
@@ -263,6 +264,14 @@ def extract_imports(path, text, lang):
                 if level and isinstance(node, ast.ImportFrom) and not node.module:
                     cands.append((roots[0] / "__init__.py").as_posix())   # from . import name: defined by the package
                 out.append((name, cands))
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    # `from pkg import name`: name may be a submodule. A module name starting with
+                    # "?" is a guess: it becomes a dependency when the file exists, and nothing otherwise.
+                    for a in node.names:
+                        if a.name != "*":
+                            sub = f"{rel}/{a.name}"
+                            out.append((f"?{name}.{a.name}", [c for r in roots for c in (
+                                (r / (sub + ".py")).as_posix(), (r / sub / "__init__.py").as_posix())]))
         return out
     for rx in IMPORT_RX.get(lang, []):
         for mod in rx.findall(text):

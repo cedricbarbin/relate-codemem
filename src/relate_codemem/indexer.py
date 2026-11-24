@@ -353,7 +353,7 @@ def index(paths=None, full=False, session=None, quiet=False, rebuild=False):
                 if kind == "code":
                     symbols = extract_symbols(path, text, lang, rev)
                     imports = extract_imports(path, text, lang)
-                    for module in dict.fromkeys(module for module, _ in imports if module):
+                    for module in dict.fromkeys(m for m, _ in imports if m and not m.startswith("?")):
                         p["imports"].append({"path": path, "module": module[:200]})
                     facts[path] = deps.facts(path, text, lang, symbols, imports)
                     sites = parse.calls(path, text, lang)

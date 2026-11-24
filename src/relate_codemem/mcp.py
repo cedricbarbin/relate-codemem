@@ -84,6 +84,41 @@ TOOLS = {
             "depth": {"type": "integer", "default": 3, "minimum": 1, "maximum": 6,
                       "description": "How many calls away to follow callers."}}},
         lambda a: queries.impact(a["name"], a.get("depth", 3))),
+    "call_path": (
+        "Answers \"how does A end up calling B?\": the shortest chain of calls from one symbol to another, "
+        "including steps where a call on an interface runs an implementation. "
+        "Example: {\"source\": \"OrderController.create\", \"target\": \"Mailer.send\"}.",
+        {"type": "object", "required": ["source", "target"], "properties": {
+            "source": {"type": "string", "description": SYMBOL}, "target": {"type": "string", "description": SYMBOL}}},
+        lambda a: queries.call_path(a["source"], a["target"])),
+    "library_usage": (
+        "Answers \"which external libraries does the project use?\" (no argument) and \"where do we use library "
+        "L, and what would removing or upgrading it touch?\" (with a name): importing files, members called, types "
+        "extended. The name is the root of the import. Example: {\"name\": \"org.springframework\"} or {}.",
+        {"type": "object", "properties": {"name": {"type": "string", "description": "Library root, e.g. numpy, "
+                                                                                 "org.springframework, @nestjs/common. Omit to list all."}}},
+        lambda a: queries.library_usage(a.get("name"))),
+    "why": (
+        "Answers \"why is this file the way it is?\": the decisions and notes that affect it, the documents and "
+        "meeting notes that mention it, and the sessions that changed it with what was asked in them. "
+        "Example: {\"path\": \"src/billing/invoice.py\"}.",
+        {"type": "object", "required": ["path"], "properties": {"path": {"type": "string", "description": "Project-relative path."}}},
+        lambda a: queries.why(a["path"])),
+    "tests_for": (
+        "Answers \"which tests cover this method?\": the tests that reach a method or a class through recorded "
+        "calls, nearest first. Run them after changing it. Example: {\"name\": \"Invoice.total\"}.",
+        {"type": "object", "required": ["name"], "properties": {
+            "name": {"type": "string", "description": SYMBOL},
+            "depth": {"type": "integer", "default": 4, "minimum": 1, "maximum": 6}}},
+        lambda a: queries.tests_for(a["name"], a.get("depth", 4))),
+    "diff_impact": (
+        "Answers \"what do my current changes affect?\": the symbols whose lines changed in the working tree "
+        "(or since a git revision), their callers, and the tests that reach them. Use it before committing or "
+        "when reviewing. Example: {} for uncommitted changes, or {\"ref\": \"origin/main\"}.",
+        {"type": "object", "properties": {
+            "ref": {"type": "string", "default": "HEAD", "description": "Git revision to compare the working tree with."},
+            "depth": {"type": "integer", "default": 3, "minimum": 1, "maximum": 6}}},
+        lambda a: queries.diff_impact(a.get("ref") or "HEAD", a.get("depth", 3))),
     "get_schema": (
         "The graph model: labels, key properties and relationships. Read it before writing Cypher for read_cypher.",
         {"type": "object", "properties": {}},
@@ -104,7 +139,8 @@ PROMPTS = {
     "ask": ("Answer a question from the project memory before reading files",
             [("question", "The question", True)],
             "Answer this question about the project using the relate-codemem MCP tools first (search, recall, "
-            "file_info, symbol_info, class_calls, implementations, impact, read_cypher). Check what they return "
+            "file_info, symbol_info, class_calls, implementations, impact, call_path, library_usage, why, tests_for, "
+            "diff_impact, read_cypher). Check what they return "
             "against the current files before relying on it, and say when the memory and the code disagree.\n\n"
             "Question: {question}"),
     "class-calls": ("Which methods does a class call?", [("name", "Class or method name", True)],
@@ -116,6 +152,20 @@ PROMPTS = {
     "impact": ("What is the impact of changing a method or a class?", [("name", "Symbol name, e.g. Customer.save", True)],
                "Use the relate-codemem `impact` tool with name `{name}`. Report the calling methods, the classes and "
                "the files affected, starting with direct callers, and point out which links are uncertain."),
+    "call-path": ("How does one symbol end up calling another?",
+                  [("source", "Calling symbol", True), ("target", "Called symbol", True)],
+                  "Use the relate-codemem `call_path` tool from `{source}` to `{target}` and explain the chain step by step."),
+    "library": ("Where is an external library used?", [("name", "Library root, e.g. numpy; empty to list all", False)],
+                "Use the relate-codemem `library_usage` tool (name: `{name}`) and summarise which files and methods "
+                "depend on it."),
+    "why": ("Why is this file the way it is?", [("path", "Project-relative path", True)],
+            "Use the relate-codemem `why` tool on `{path}`, then explain the reasons it gives, oldest first, and say "
+            "which of them still hold in the current code."),
+    "tests": ("Which tests cover a method or a class?", [("name", "Symbol name", True)],
+              "Use the relate-codemem `tests_for` tool with name `{name}` and list the tests to run after changing it."),
+    "diff-impact": ("What do the current changes affect?", [("ref", "Git revision to compare with (default HEAD)", False)],
+                    "Use the relate-codemem `diff_impact` tool (ref: `{ref}`, default HEAD). Report the changed symbols, "
+                    "their callers and the tests to run, and point out callers that look risky."),
 }
 
 

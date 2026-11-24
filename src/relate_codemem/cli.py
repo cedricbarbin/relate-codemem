@@ -92,6 +92,19 @@ def build_parser():
     a = sub.add_parser("impact", help="callers of a method or class, their classes and files")
     a.add_argument("name")
     a.add_argument("--depth", type=int, default=3, help="how many calls away to follow callers (default 3)")
+    a = sub.add_parser("path", help="the shortest chain of calls from one symbol to another")
+    a.add_argument("source")
+    a.add_argument("target")
+    a = sub.add_parser("uses", help="the libraries the project uses, or where one of them is used")
+    a.add_argument("library", nargs="?")
+    a = sub.add_parser("why", help="decisions, notes, documents and sessions that explain a file")
+    a.add_argument("path")
+    a = sub.add_parser("tests", help="the tests that reach a method or a class")
+    a.add_argument("name")
+    a.add_argument("--depth", type=int, default=4, help="how many calls away to look (default 4)")
+    a = sub.add_parser("diff-impact", help="what the uncommitted changes, or the changes since a revision, may affect")
+    a.add_argument("ref", nargs="?", default="HEAD", help="git revision to compare the working tree with (default HEAD)")
+    a.add_argument("--depth", type=int, default=3)
     a = sub.add_parser("playground", help="serve the store read-only on this machine, to explore it in Neo4j Browser")
     a.add_argument("--bolt", type=int, default=7688, help="Bolt port (default 7688)")
     a.add_argument("--http", type=int, default=7475, help="HTTP query API port (default 7475)")
@@ -204,6 +217,16 @@ def main(argv=None):
             print(queries.implementations(args.name))
         elif args.cmd == "impact":
             print(queries.impact(args.name, args.depth))
+        elif args.cmd == "path":
+            print(queries.call_path(args.source, args.target))
+        elif args.cmd == "uses":
+            print(queries.library_usage(args.library))
+        elif args.cmd == "why":
+            print(queries.why(args.path))
+        elif args.cmd == "tests":
+            print(queries.tests_for(args.name, args.depth))
+        elif args.cmd == "diff-impact":
+            print(queries.diff_impact(args.ref, args.depth))
         elif args.cmd == "playground":
             return playground(args.bolt, args.http, args.open)
     except (store.RelateError, config.ConfigError, subprocess.SubprocessError) as exc:

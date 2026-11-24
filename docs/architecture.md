@@ -263,7 +263,25 @@ read-only Cypher: what a class calls (`calls`), which implementations or
 subtypes a type has (`implementations`), and what a change to a method or a
 class affects (`impact`: callers up to N calls away, including those that
 reach the method through a supertype, with their classes and files). They
-are commands of the CLI and tools of the MCP server.
+are commands of the CLI and tools of the MCP server, as are:
+
+- `path` (`call_path`): the shortest chain of calls between two symbols; a
+  step may go from a declaration to a method that redefines it, since a call
+  on an interface runs an implementation;
+- `uses` (`library_usage`): the libraries behind external imports, or for one
+  library the importing files, the members called and the types extended;
+- `why`: for a file, the decisions and notes that affect it, the documents
+  and meeting notes that mention it, and the sessions that changed it with
+  the prompts of those sessions;
+- `tests` (`tests_for`): the callers that sit in test files, recognised by
+  their name or directory (`tests/`, `test_*.py`, `*Test.java`,
+  `*.spec.ts`...);
+- `diff-impact`: `git diff` against a revision gives the changed lines, the
+  index gives the symbols those lines belong to, and their callers and tests
+  follow.
+
+All of them report a lower bound: a call whose receiver has no written type
+is not in the graph.
 
 `relate-codemem mcp` is a small MCP server over stdio written in this
 package (JSON-RPC, no dependency). Its named tools run those fixed queries;

@@ -40,7 +40,11 @@ All notable changes to this project are documented here. The format follows
 
 - Standard questions as commands and MCP tools: `calls` (what a class or a
   method calls), `implementations` (subtypes, redefinitions) and `impact`
-  (callers, classes and files affected by a change).
+  (callers, classes and files affected by a change), `path` (chain of calls
+  between two symbols), `uses` (libraries, or where one is used), `why`
+  (decisions, documents and sessions behind a file), `tests` (tests that
+  reach a symbol) and `diff-impact` (what the changes since a git revision
+  affect).
 - The MCP server is now part of this package: it adds those tools, `search`,
   `recall`, `file_info` and `symbol_info` to `read_cypher` and `get_schema`,
   and publishes the questions as MCP prompts. It stays read-only.
@@ -51,6 +55,9 @@ All notable changes to this project are documented here. The format follows
   metadata, and absolute links in the README, for the PyPI page.
 
 ### Changed
+
+- Python: `from package import submodule` now creates a dependency on the
+  submodule's file.
 
 - File dependencies are resolved from declared symbols instead of guessed
   paths: same-package references without an import (Java, Kotlin, Scala, C#,
