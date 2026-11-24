@@ -23,6 +23,13 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/cedricbarbin/relate-codemem"
+Repository = "https://github.com/cedricbarbin/relate-codemem"
+Documentation = "https://github.com/cedricbarbin/relate-codemem/tree/main/docs"
+Issues = "https://github.com/cedricbarbin/relate-codemem/issues"
+Changelog = "https://github.com/cedricbarbin/relate-codemem/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 # Local embeddings (no service, no API key). Other providers need no extra.
 local = ["fastembed>=0.4"]

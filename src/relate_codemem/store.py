@@ -144,11 +144,13 @@ def relate_bin():
                       "(see `relate-codemem doctor`)")
 
 
-def run(script, params=None, read_only=False, timeout=180):
+def run(script, params=None, read_only=False, timeout=180, strict=False):
     """Run a `;`-separated script; returns one list of row dicts per statement.
     Parameters are bound as the single map `$p`."""
     cmd = [relate_bin(), "query", "--database", str(db()), "--mode", "envelope", "--max-rows", "0"]
-    if read_only and EXCLUSIVE_READS:
+    # strict: the statement is not ours (MCP read_cypher), so the engine's own read-only mode is
+    # used on every platform, whatever it costs in stability.
+    if read_only and EXCLUSIVE_READS and not strict:
         with write_lock():
             return _run(cmd, script, params, False, timeout)
     if read_only:

@@ -63,7 +63,8 @@ The installer:
    provider is `local`;
 3. runs `relate-codemem setup`, which records the default provider in the user
    configuration, writes the Claude Code skill to
-   `~/.claude/skills/relate-codemem-init/` and prints the `doctor` report.
+   `~/.claude/skills/relate-codemem-*/` (init, ask, impact, playground) and
+   prints the `doctor` report.
 
 ## PATH
 

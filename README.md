@@ -36,6 +36,8 @@ Works on macOS, Linux and Windows.
 > the configuration keys may still change before 1.0. Developed and tested on
 > macOS; the Linux and Windows paths are covered by CI only.
 
+Source, documentation and issues: <https://github.com/cedricbarbin/relate-codemem>.
+
 ## Install
 
 relate-codemem is on [PyPI](https://pypi.org/project/relate-codemem/). With
@@ -73,7 +75,7 @@ git clone https://github.com/cedricbarbin/relate-codemem; cd relate-codemem; .\i
 The installer checks for uv and relate and offers to install them, asks which
 embedding provider should be the default, then installs the command (alias
 `rcm`) from the checkout and runs `setup`. Details:
-[docs/install.md](docs/install.md).
+[docs/install.md](https://github.com/cedricbarbin/relate-codemem/blob/main/docs/install.md).
 
 Check the result at any time:
 
@@ -119,7 +121,35 @@ changes, the revision is incremented and a `FileRevision` node records the
 hash, time, git commit and session, linked to the previous one. Symbols keep
 the revision they appeared in and the last revision that changed their body.
 Decisions and notes are never deleted: a newer entry in the same slot
-supersedes the old one. See [docs/architecture.md](docs/architecture.md).
+supersedes the old one. See [docs/architecture.md](https://github.com/cedricbarbin/relate-codemem/blob/main/docs/architecture.md).
+
+## In Claude Code
+
+`setup` installs four skills, each usable as a slash command:
+
+| Command | What it does |
+| --- | --- |
+| `/relate-codemem-init` | set up the memory in the current project and analyse it |
+| `/relate-codemem-ask <question>` | answer from the memory graph first, then check against the code |
+| `/relate-codemem-impact <symbol>` | callers, classes and files affected by changing a method or a class |
+| `/relate-codemem-playground` | serve the graph locally for visual exploration |
+
+The project's `.mcp.json` registers a read-only MCP server whose tools cover
+the standard questions, so Claude can answer them without writing a query:
+
+| Tool | Question it answers |
+| --- | --- |
+| `search`, `recall` | where is this, what did we decide, what happened last time |
+| `file_info`, `symbol_info` | everything recorded about one file or one symbol |
+| `class_calls` | which methods does class X call, inside and outside the project? |
+| `implementations` | which implementations of interface Y exist? |
+| `impact` | what would changing method M of class C affect: calling methods, classes, files? |
+| `get_schema`, `read_cypher` | anything else, in read-only Cypher |
+
+The same questions are offered as MCP prompts (`ask`, `class-calls`,
+`implementations`, `impact`), which Claude Code lists among its slash
+commands under the server's name. The call graph behind `class_calls`,
+`implementations` and `impact` needs the `parse` extra.
 
 ## Use it
 
@@ -131,14 +161,18 @@ relate-codemem recall                              # open decisions, notes, meet
 relate-codemem search "how are tokens refreshed"   # hybrid search
 relate-codemem search retry --kind decision        # code | doc | decision | meeting | session | note
 relate-codemem file src/app/config.py              # revisions, symbols, dependencies, decisions, sessions
-relate-codemem symbol parse_config
+relate-codemem symbol parse_config                 # definition, hierarchy, calls and callers
+relate-codemem calls OrderService                  # what a class (all its methods) or a method calls
+relate-codemem implementations Repository          # subtypes of a type, redefinitions of a method
+relate-codemem impact Customer.save --depth 3      # callers, classes and files affected by a change
+relate-codemem playground                          # explore the graph in Neo4j Browser (read-only, local)
 relate-codemem query "MATCH (f:File) RETURN f.kind, count(*) LIMIT 10"    # read-only Cypher
 relate-codemem decide --title "..." --text "..." --rationale "..." --slot area/topic --files a.py,b.py
 relate-codemem note "Integration tests need Docker running" --slot tests/prerequisites
 relate-codemem status
 ```
 
-A worked example with real output is in [examples/](examples/README.md).
+A worked example with real output is in [examples/](https://github.com/cedricbarbin/relate-codemem/blob/main/examples/README.md).
 
 ## Embeddings
 
@@ -165,7 +199,7 @@ and can be overridden per project in `.claude/settings.local.json`:
 `relate-codemem config` shows the effective value and where it comes from. When
 nothing is configured, embeddings are local. Changing provider or model
 rebuilds the project's vectors on the next `relate-codemem embed`. All settings:
-[docs/configuration.md](docs/configuration.md).
+[docs/configuration.md](https://github.com/cedricbarbin/relate-codemem/blob/main/docs/configuration.md).
 
 ## Privacy
 
@@ -199,7 +233,7 @@ rebuilds the project's vectors on the next `relate-codemem embed`. All settings:
 uv tool uninstall relate-codemem
 ```
 
-Then delete `~/.claude/skills/relate-codemem-init`, the cache
+Then delete the `~/.claude/skills/relate-codemem-*` directories, the cache
 (`~/.cache/relate-codemem`, models and grammars) and the user configuration
 (`~/.config/relate-codemem`, or `%APPDATA%\relate-codemem` on Windows). In a
 project, remove the `relate-codemem hook` entries from `.claude/settings.json`,
@@ -208,10 +242,10 @@ the server from `.mcp.json`, the marked section of `CLAUDE.md` and the
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Security reports:
-[SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](https://github.com/cedricbarbin/relate-codemem/blob/main/CONTRIBUTING.md). Security reports:
+[SECURITY.md](https://github.com/cedricbarbin/relate-codemem/blob/main/SECURITY.md).
 
 ## License
 
-[MIT](LICENSE). relate-codemem is an independent project; it drives the
+[MIT](https://github.com/cedricbarbin/relate-codemem/blob/main/LICENSE). relate-codemem is an independent project; it drives the
 `relate` binary, which is distributed separately under its own license.

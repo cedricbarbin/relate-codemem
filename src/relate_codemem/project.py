@@ -19,6 +19,9 @@ HOOKS = {
 PERMISSIONS = ["Bash(relate-codemem:*)", "Bash(rcm:*)"]
 MARK_BEGIN, MARK_END = "<!-- relate-codemem:begin -->", "<!-- relate-codemem:end -->"
 SKILL_NAME = "relate-codemem-init"
+# Claude Code skills installed for the user, each usable as a slash command: name -> template
+SKILLS = {SKILL_NAME: "skill.md", "relate-codemem-ask": "skill-ask.md", "relate-codemem-impact": "skill-impact.md",
+          "relate-codemem-playground": "skill-playground.md"}
 
 
 def template(name):
@@ -52,11 +55,12 @@ def skill_dir():
     return Path.home() / ".claude" / "skills" / SKILL_NAME
 
 
-def install_skill():
-    dest = skill_dir()
-    dest.mkdir(parents=True, exist_ok=True)
-    (dest / "SKILL.md").write_text(template("skill.md"), "utf-8")
-    return dest
+def install_skills():
+    root = skill_dir().parent
+    for name, source in SKILLS.items():
+        (root / name).mkdir(parents=True, exist_ok=True)
+        (root / name / "SKILL.md").write_text(template(source), "utf-8")
+    return root
 
 
 def setup(overrides, skill=True):
@@ -71,7 +75,7 @@ def setup(overrides, skill=True):
     path = config.save_global(data)
     print(f"default embeddings: {data['embeddings']['provider']}  ({path})")
     if skill:
-        print(f"Claude Code skill:  /{SKILL_NAME}  ({install_skill()})")
+        print(f"Claude Code skills: {', '.join('/' + name for name in SKILLS)}  ({install_skills()})")
     print()
     return doctor(project=False)
 
@@ -204,8 +208,9 @@ def doctor(project=True):
         good &= _check(not key_env or os.environ.get(key_env), "embeddings",
                        f"{name} at {ecfg['url']}, key in ${key_env} ({source})",
                        f"export {key_env}=... (the key is read from the environment, never stored)")
-    _check((skill_dir() / "SKILL.md").exists(), "Claude Code skill", f"/{SKILL_NAME}",
-           "relate-codemem setup")
+    missing = [name for name in SKILLS if not (skill_dir().parent / name / "SKILL.md").exists()]
+    _check(not missing, "Claude Code skills", ", ".join("/" + name for name in SKILLS)
+           + (f" (missing: {', '.join(missing)})" if missing else ""), "relate-codemem setup")
 
     if project:
         root = config.project_root()

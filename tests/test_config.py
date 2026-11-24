@@ -57,3 +57,15 @@ def test_project_options_file(project):
     config.reset(project)
     cfg = config.project_config()
     assert cfg["meetings_dirs"] == ["notes"] and "bogus" not in cfg and cfg["chunk_chars"] == 1800
+
+
+def test_setup_installs_every_skill(tmp_path, monkeypatch, capsys):
+    from pathlib import Path
+
+    from relate_codemem import project as setup
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    root = setup.install_skills()
+    assert sorted(p.name for p in root.iterdir()) == sorted(setup.SKILLS)
+    for name in setup.SKILLS:
+        text = (root / name / "SKILL.md").read_text()
+        assert text.startswith(f"---\nname: {name}\n") and "description:" in text

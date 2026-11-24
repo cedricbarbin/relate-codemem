@@ -38,6 +38,18 @@ All notable changes to this project are documented here. The format follows
   `root` library; calls and supertypes proven external by an import are
   linked to `External` nodes. `file` and `symbol` show them.
 
+- Standard questions as commands and MCP tools: `calls` (what a class or a
+  method calls), `implementations` (subtypes, redefinitions) and `impact`
+  (callers, classes and files affected by a change).
+- The MCP server is now part of this package: it adds those tools, `search`,
+  `recall`, `file_info` and `symbol_info` to `read_cypher` and `get_schema`,
+  and publishes the questions as MCP prompts. It stays read-only.
+- `playground` serves the store read-only on this machine for Neo4j Browser.
+- Claude Code skills `/relate-codemem-ask`, `/relate-codemem-impact` and
+  `/relate-codemem-playground`, installed by `setup`.
+- Project links (repository, documentation, issues, changelog) in the package
+  metadata, and absolute links in the README, for the PyPI page.
+
 ### Changed
 
 - File dependencies are resolved from declared symbols instead of guessed

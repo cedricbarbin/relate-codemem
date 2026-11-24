@@ -5,7 +5,7 @@ relate-codemem is a thin layer between Claude Code and a relate store:
 ```
 Claude Code ── hooks ──▶ relate-codemem hook ──▶ spool ──▶ ┐
             ── Bash ───▶ relate-codemem search / recall ◀──┤  relate store
-            ── MCP ────▶ relate serve --read-only=live ◀──┘  .claude/relate/db
+            ── MCP ────▶ relate-codemem mcp (read-only) ◀──┘  .claude/relate/db
 terminal    ───────────▶ relate-codemem index / embed ────▶
 ```
 
@@ -255,6 +255,27 @@ implementation runs at a given call: `OVERRIDES` gives the possible ones.
 Anonymous classes and lambdas are not indexed. Go interfaces, being
 implicit, produce no `EXTENDS` link. In dynamic languages most receivers
 have no written type, so more links are `name` links.
+
+### Standard questions, MCP server and playground
+
+`queries.py` holds the questions that come back most often, as fixed
+read-only Cypher: what a class calls (`calls`), which implementations or
+subtypes a type has (`implementations`), and what a change to a method or a
+class affects (`impact`: callers up to N calls away, including those that
+reach the method through a supertype, with their classes and files). They
+are commands of the CLI and tools of the MCP server.
+
+`relate-codemem mcp` is a small MCP server over stdio written in this
+package (JSON-RPC, no dependency). Its named tools run those fixed queries;
+`read_cypher` runs a caller's statement with the engine's own read-only
+mode, so nothing can be written through the server. It also publishes the
+questions as MCP prompts.
+
+`relate-codemem playground` serves the store read-only on the loopback
+interface (`relate serve` with the Bolt and HTTP surfaces, basic auth with a
+token kept beside the store) so that Neo4j Browser can display the graph.
+relate's own playground runs a database inside the web page and cannot open
+a store on disk.
 
 Decisions and notes follow the same no-delete rule on the knowledge side: an
 entry written with the `--slot` of an existing current entry, or with

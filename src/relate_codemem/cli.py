@@ -3,8 +3,9 @@ import argparse
 import json
 import subprocess
 import sys
+import webbrowser
 
-from . import __version__, config, embeddings, events, indexer, project, recall, store
+from . import __version__, config, embeddings, events, indexer, mcp, project, queries, recall, store
 
 
 def _embedding_options(parser):
@@ -17,6 +18,35 @@ def _embedding_options(parser):
 
 def _overrides(args):
     return project.embedding_overrides(args.embeddings, args.model, args.url, args.api_key_env, args.dimensions)
+
+
+def playground(bolt, http, open_browser):
+    """Serve the project store read-only on the loopback interface until interrupted.
+
+    relate has no local playground of its own (the one on its site runs an in-browser
+    database); what it offers for a store on disk is the Bolt and HTTP surfaces, which
+    Neo4j Browser can connect to."""
+    store.ensure_store()
+    link = f"https://browser.neo4j.io/?connectURL=bolt://relate@127.0.0.1:{bolt}"
+    print(f"""Serving the project memory read-only (it follows new commits). Stop with Ctrl-C.
+
+  Bolt      bolt://127.0.0.1:{bolt}
+  HTTP API  http://127.0.0.1:{http}
+  user      relate
+  password  the token printed below (kept in {store.db()}.auth-token)
+
+Explore it in Neo4j Browser, which runs in your web browser and talks to this machine only:
+  {link}
+Try:  MATCH (a:Symbol)-[r:CALLS]->(b:Symbol) RETURN a, r, b LIMIT 100
+""", flush=True)
+    if open_browser:
+        webbrowser.open(link)
+    try:
+        return subprocess.call([store.relate_bin(), "serve", "--database", str(store.db()), "--read-only=live",
+                                "--bolt", str(bolt), "--http", str(http)],
+                               stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, **config.NO_WINDOW)
+    except KeyboardInterrupt:
+        return 0
 
 
 def build_parser():
@@ -53,8 +83,19 @@ def build_parser():
     sub.add_parser("recall", help="open decisions, notes, meetings, recent sessions")
     a = sub.add_parser("file", help="revisions, symbols, dependencies, decisions and sessions of a file")
     a.add_argument("path")
-    a = sub.add_parser("symbol", help="where a symbol is defined")
+    a = sub.add_parser("symbol", help="where a symbol is defined, what it calls, what calls it")
     a.add_argument("name")
+    a = sub.add_parser("calls", help="what a class (through all its methods) or a method calls")
+    a.add_argument("name")
+    a = sub.add_parser("implementations", help="subtypes of a type, or redefinitions of a method")
+    a.add_argument("name")
+    a = sub.add_parser("impact", help="callers of a method or class, their classes and files")
+    a.add_argument("name")
+    a.add_argument("--depth", type=int, default=3, help="how many calls away to follow callers (default 3)")
+    a = sub.add_parser("playground", help="serve the store read-only on this machine, to explore it in Neo4j Browser")
+    a.add_argument("--bolt", type=int, default=7688, help="Bolt port (default 7688)")
+    a.add_argument("--http", type=int, default=7475, help="HTTP query API port (default 7475)")
+    a.add_argument("--open", action="store_true", help="open Neo4j Browser in the default web browser")
     a = sub.add_parser("query", help="read-only Cypher")
     a.add_argument("cypher")
     sub.add_parser("schema", help="the graph model")
@@ -156,12 +197,15 @@ def main(argv=None):
         elif args.cmd == "flush":
             print(f"flushed {events.flush()} event(s)")
         elif args.cmd == "mcp":
-            store.ensure_store()
-            # The standard streams are passed explicitly: on Windows a child started
-            # without a window only receives them when they are named.
-            return subprocess.call([store.relate_bin(), "serve", "--mcp", "stdio", "--database",
-                                    str(store.db()), "--read-only=live"],
-                                   stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, **config.NO_WINDOW)
+            return mcp.serve()
+        elif args.cmd == "calls":
+            print(queries.calls_of(args.name))
+        elif args.cmd == "implementations":
+            print(queries.implementations(args.name))
+        elif args.cmd == "impact":
+            print(queries.impact(args.name, args.depth))
+        elif args.cmd == "playground":
+            return playground(args.bolt, args.http, args.open)
     except (store.RelateError, config.ConfigError, subprocess.SubprocessError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
