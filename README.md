@@ -27,23 +27,39 @@ Works on macOS, Linux and Windows.
 
 ## Install
 
-macOS and Linux:
+relate-codemem is on [PyPI](https://pypi.org/project/relate-codemem/). With
+[uv](https://docs.astral.sh/uv) and [relate](https://relatedb.ai) already on
+the machine, on any platform:
+
+```bash
+uv tool install --python 3.12 "relate-codemem[local]"
+```
+
+```bash
+relate-codemem setup --embeddings local
+```
+
+`setup` records the default embedding provider for this machine and adds the
+`/relate-codemem-init` skill to Claude Code. Install plain `relate-codemem`,
+without `[local]`, if you will not use local embeddings.
+
+To have the prerequisites installed for you, run the installer from a
+checkout. On macOS and Linux:
 
 ```bash
 git clone https://github.com/cedricbarbin/relate-codemem && cd relate-codemem && ./install.sh
 ```
 
-Windows (PowerShell):
+On Windows (PowerShell):
 
 ```powershell
 git clone https://github.com/cedricbarbin/relate-codemem; cd relate-codemem; .\install.ps1
 ```
 
-The installer checks for [uv](https://docs.astral.sh/uv) and
-[relate](https://relatedb.ai) and offers to install them, asks which embedding
-provider should be the default on this machine, installs the `relate-codemem`
-command (alias `rcm`), and adds the `/relate-codemem-init` skill to Claude
-Code. Details and manual steps: [docs/install.md](docs/install.md).
+The installer checks for uv and relate and offers to install them, asks which
+embedding provider should be the default, then installs the command (alias
+`rcm`) from the checkout and runs `setup`. Details:
+[docs/install.md](docs/install.md).
 
 Check the result at any time:
 

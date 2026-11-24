@@ -10,6 +10,28 @@ needs two programs on the machine:
 
 `git` is optional: with it, file discovery honours `.gitignore`.
 
+## From PyPI
+
+With relate and uv installed:
+
+```bash
+uv tool install --python 3.12 "relate-codemem[local]"
+relate-codemem setup --embeddings local
+```
+
+The `local` extra adds `fastembed` for local embeddings; install plain
+`relate-codemem` if the provider will be `ollama`, `openai` or `none`, and
+pass that provider to `setup`. `setup` accepts the same `--model`, `--url` and
+`--api-key-env` options as the installer below.
+
+`pipx` works too: `pipx install "relate-codemem[local]"`.
+
+To install the development version instead of the latest release:
+
+```bash
+uv tool install --python 3.12 --with "fastembed>=0.4" git+https://github.com/cedricbarbin/relate-codemem
+```
+
 ## With the installer
 
 From a checkout, `./install.sh` (macOS, Linux) or `.\install.ps1` (Windows).
@@ -32,21 +54,11 @@ Unattended example:
 The installer:
 
 1. installs uv and relate if they are missing (after asking);
-2. runs `uv tool install` for relate-codemem, with `fastembed` when the
-   provider is `local`;
+2. runs `uv tool install` on the checkout (the code you cloned, not the PyPI
+   release), with `fastembed` when the provider is `local`;
 3. runs `relate-codemem setup`, which records the default provider in the user
    configuration, writes the Claude Code skill to
    `~/.claude/skills/relate-codemem-init/` and prints the `doctor` report.
-
-## By hand
-
-```bash
-uv tool install --python 3.12 --with "fastembed>=0.4" git+https://github.com/cedricbarbin/relate-codemem
-relate-codemem setup --embeddings local
-```
-
-Drop `--with "fastembed>=0.4"` if you do not use local embeddings. `pipx`
-works too: `pipx install "relate-codemem[local] @ git+https://github.com/cedricbarbin/relate-codemem"`.
 
 ## PATH
 
@@ -57,14 +69,15 @@ to your shell profile; restart the terminal (and Claude Code) afterwards.
 
 ## Upgrade
 
-Pull the repository and rerun the installer, or:
-
 ```bash
 uv tool upgrade relate-codemem
 relate-codemem setup            # refreshes the skill
 relate-codemem init             # in each project: refreshes hooks and the CLAUDE.md section
 relate-codemem index --full     # only if release notes say extraction changed
 ```
+
+If you installed from a checkout, pull the repository and rerun the installer
+instead of `uv tool upgrade`.
 
 ## Teams
 
