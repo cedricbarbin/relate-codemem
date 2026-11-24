@@ -154,8 +154,11 @@ def main(argv=None):
             print(f"flushed {events.flush()} event(s)")
         elif args.cmd == "mcp":
             store.ensure_store()
+            # The standard streams are passed explicitly: on Windows a child started
+            # without a window only receives them when they are named.
             return subprocess.call([store.relate_bin(), "serve", "--mcp", "stdio", "--database",
-                                    str(store.db()), "--read-only=live"], **config.NO_WINDOW)
+                                    str(store.db()), "--read-only=live"],
+                                   stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, **config.NO_WINDOW)
     except (store.RelateError, config.ConfigError, subprocess.SubprocessError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
