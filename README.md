@@ -159,6 +159,9 @@ rebuilds the project's vectors on the next `relate-codemem embed`. All settings:
 - Full-text search matches whole words without stemming; identifiers are split
   (`config` finds `parseConfig` and `parse_config`).
 - Timestamps are shown in UTC.
+- Windows: relate 1.2.0 is unstable there when a read-only open follows a write,
+  so reads are serialised with writes. The read-only MCP server is untested on
+  Windows.
 
 ## Uninstall
 

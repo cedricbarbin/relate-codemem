@@ -98,8 +98,33 @@ class file_lock:
         self.fh.close()
 
 
+class _WriteLock:
+    """The store's writer lock, re-entrant within the process."""
+    depth, inner = 0, None
+
+    def __enter__(self):
+        cls = _WriteLock
+        if cls.depth == 0:
+            cls.inner = file_lock("write.lock", 45)
+            cls.inner.__enter__()
+        cls.depth += 1
+        return self
+
+    def __exit__(self, *exc):
+        cls = _WriteLock
+        cls.depth -= 1
+        if cls.depth == 0:
+            cls.inner.__exit__(*exc)
+            cls.inner = None
+
+
 def write_lock():
-    return file_lock("write.lock", 45)
+    return _WriteLock()
+
+
+# relate.exe 1.2.0 on Windows intermittently crashes or hangs when a read-only open
+# follows a writer. There, reads open the store normally, serialised with the writers.
+EXCLUSIVE_READS = os.name == "nt"
 
 
 # ---------------------------------------------------------------- relate CLI
@@ -123,8 +148,15 @@ def run(script, params=None, read_only=False, timeout=180):
     """Run a `;`-separated script; returns one list of row dicts per statement.
     Parameters are bound as the single map `$p`."""
     cmd = [relate_bin(), "query", "--database", str(db()), "--mode", "envelope", "--max-rows", "0"]
+    if read_only and EXCLUSIVE_READS:
+        with write_lock():
+            return _run(cmd, script, params, False, timeout)
     if read_only:
         cmd.append("--read-only")
+    return _run(cmd, script, params, read_only, timeout)
+
+
+def _run(cmd, script, params, read_only, timeout):
     tmp = None
     try:
         if params is not None:

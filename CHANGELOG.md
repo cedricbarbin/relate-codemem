@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 - Files with CRLF line endings are normalised before hashing and parsing.
 - A read that hits an abnormal exit of the relate binary (seen on Windows) is retried.
+- On Windows, reads open the store normally under the writer lock instead of
+  read-only, which crashed or hung intermittently with relate 1.2.0.
 
 ## 0.1.0 - 2026-11-24
 
