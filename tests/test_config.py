@@ -69,3 +69,44 @@ def test_setup_installs_every_skill(tmp_path, monkeypatch, capsys):
     for name in setup.SKILLS:
         text = (root / name / "SKILL.md").read_text()
         assert text.startswith(f"---\nname: {name}\n") and "description:" in text
+
+
+def test_sharedb_needs_a_confirmation_and_keeps_secrets_ignored(project, capsys, monkeypatch):
+    import shutil
+    import subprocess
+
+    from relate_codemem import cli, project as setup
+    (project / ".gitignore").write_text("node_modules/\n# relate-codemem store (local)\n.claude/relate/\n")
+    home = project / ".claude" / "relate"
+    (home / "db").mkdir(parents=True)
+    for name in ("db/manifest.json", "db.auth-token", "memory.log", "state.json", "deps.json", "embeddings.json", ".schema-v2"):
+        (home / name).write_text("x")
+    monkeypatch.setattr(setup.store, "run", lambda *a, **k: [[]])        # no relate needed for this test
+    monkeypatch.setattr(setup.store, "ensure_store", lambda: None)
+
+    assert cli.main(["sharedb"]) == 1                                    # not a terminal, no --yes: refused
+    out = capsys.readouterr().out
+    assert "NOT recommended on a public repository" in out and "prompts" in out and "Not changed" in out
+    assert ".claude/relate/" in (project / ".gitignore").read_text().splitlines()
+
+    assert cli.main(["sharedb", "--yes"]) == 0
+    lines = (project / ".gitignore").read_text().splitlines()
+    assert "node_modules/" in lines and ".claude/relate/" not in lines and "!.claude/relate/db/" in lines
+    if shutil.which("git"):
+        subprocess.run(["git", "init", "-q"], cwd=project, check=True, **config.NO_WINDOW)
+
+        def ignored(name):
+            return subprocess.run(["git", "check-ignore", "-q", f".claude/relate/{name}"], cwd=project,
+                                  **config.NO_WINDOW).returncode == 0
+
+        assert not any(ignored(n) for n in ("db/manifest.json", "deps.json", "embeddings.json", ".schema-v2"))
+        assert all(ignored(n) for n in ("db.auth-token", "memory.log", "state.json", "write.lock", "spool/events.jsonl"))
+
+    # init leaves a shared store shared, and --off restores the local rule
+    before = (project / ".gitignore").read_text()
+    setup.init_project(project, {})
+    assert (project / ".gitignore").read_text() == before
+    assert cli.main(["sharedb", "--off"]) == 0
+    lines = (project / ".gitignore").read_text().splitlines()
+    assert ".claude/relate/" in lines and "!.claude/relate/db/" not in lines and "node_modules/" in lines
+    assert "git rm -r --cached" in capsys.readouterr().out

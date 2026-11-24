@@ -48,9 +48,14 @@ All notable changes to this project are documented here. The format follows
 - The MCP server is now part of this package: it adds those tools, `search`,
   `recall`, `file_info` and `symbol_info` to `read_cypher` and `get_schema`,
   and publishes the questions as MCP prompts. It stays read-only.
-- `playground` serves the store read-only on this machine for Neo4j Browser.
-- Claude Code skills `/relate-codemem-ask`, `/relate-codemem-impact` and
-  `/relate-codemem-playground`, installed by `setup`.
+- `playground` serves the store read-only on this machine for Neo4j Browser,
+  with an optional chosen password (`--password` or
+  `RELATE_CODEMEM_PLAYGROUND_PASSWORD`).
+- `sharedb` lets git track the store, after a warning about personal data
+  and a confirmation; `sharedb --off` undoes it.
+- Claude Code skills `/relate-codemem-ask`, `/relate-codemem-impact`,
+  `/relate-codemem-playground` and `/relate-codemem-sharedb`, installed by
+  `setup`.
 - Project links (repository, documentation, issues, changelog) in the package
   metadata, and absolute links in the README, for the PyPI page.
 

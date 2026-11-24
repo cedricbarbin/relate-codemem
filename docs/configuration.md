@@ -103,6 +103,7 @@ creates the README templates. After changing these, run `relate-codemem index`.
 | `RELATE_CODEMEM_HOME` | store directory, instead of `<project>/.claude/relate` |
 | `RELATE_CODEMEM_PARSER` | `auto` (default): tree-sitter when the `parse` extra is installed (grammars are downloaded on first use); `regex`: always regular expressions, no download |
 | `RELATE_CODEMEM_PROJECT` | project root, instead of auto-detection |
+| `RELATE_CODEMEM_PLAYGROUND_PASSWORD` | password of the user `relate` for `playground`, instead of a generated token; put it in `.claude/settings.local.json`, not in the shared settings |
 
 The project root is, in order: `RELATE_CODEMEM_PROJECT`, Claude Code's
 `CLAUDE_PROJECT_DIR`, the nearest parent directory that is already

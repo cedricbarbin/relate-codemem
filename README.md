@@ -125,14 +125,15 @@ supersedes the old one. See [docs/architecture.md](https://github.com/cedricbarb
 
 ## In Claude Code
 
-`setup` installs four skills, each usable as a slash command:
+`setup` installs five skills, each usable as a slash command:
 
 | Command | What it does |
 | --- | --- |
 | `/relate-codemem-init` | set up the memory in the current project and analyse it |
 | `/relate-codemem-ask <question>` | answer from the memory graph first, then check against the code |
 | `/relate-codemem-impact <symbol>` | callers, classes and files affected by changing a method or a class |
-| `/relate-codemem-playground` | serve the graph locally for visual exploration |
+| `/relate-codemem-playground [password]` | serve the graph locally for visual exploration, with an optional password for the user `relate` |
+| `/relate-codemem-sharedb [off]` | let git track the store, after a warning and an explicit confirmation |
 
 The project's `.mcp.json` registers a read-only MCP server whose tools cover
 the standard questions, so Claude can answer them without writing a query:
@@ -157,6 +158,19 @@ The same questions are offered as MCP prompts (`ask`, `class-calls`,
 server's name. The questions that rest on the call graph (`class_calls`,
 `implementations`, `impact`, `call_path`, `tests_for`, `diff_impact`) need
 the `parse` extra.
+
+## Sharing the store
+
+The store is local by default: `init` adds `.claude/relate/` to `.gitignore`,
+and each teammate builds their own. `relate-codemem sharedb` lets git track
+the database instead, so that the memory travels with the repository. It
+shows a warning and asks for a confirmation first, because the store holds
+session prompts, replies and shell commands, which may contain personal
+data or secrets pasted by mistake, and everything pushed stays in the git
+history. **Do not do this on a public repository.** The database is binary
+and changes at every session, so the repository grows and two versions
+cannot be merged. The playground token, logs and local state stay ignored.
+`relate-codemem sharedb --off` goes back to a local store.
 
 ## Use it
 

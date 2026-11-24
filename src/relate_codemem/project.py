@@ -21,7 +21,7 @@ MARK_BEGIN, MARK_END = "<!-- relate-codemem:begin -->", "<!-- relate-codemem:end
 SKILL_NAME = "relate-codemem-init"
 # Claude Code skills installed for the user, each usable as a slash command: name -> template
 SKILLS = {SKILL_NAME: "skill.md", "relate-codemem-ask": "skill-ask.md", "relate-codemem-impact": "skill-impact.md",
-          "relate-codemem-playground": "skill-playground.md"}
+          "relate-codemem-playground": "skill-playground.md", "relate-codemem-sharedb": "skill-sharedb.md"}
 
 
 def template(name):
@@ -78,6 +78,69 @@ def setup(overrides, skill=True):
         print(f"Claude Code skills: {', '.join('/' + name for name in SKILLS)}  ({install_skills()})")
     print()
     return doctor(project=False)
+
+
+# ---------------------------------------------------------------- sharing the store
+
+LOCAL_STORE = ["# relate-codemem store (local)", ".claude/relate/"]
+# Everything in the store directory stays out of git except the database and the files that
+# describe it. The access token, logs, locks, spool and machine-specific state are never shared.
+SHARED_STORE = ["# relate-codemem store, shared through git (relate-codemem sharedb)",
+                ".claude/relate/*", "!.claude/relate/db/", "!.claude/relate/deps.json",
+                "!.claude/relate/embeddings.json", "!.claude/relate/.schema-v*"]
+
+SHARE_WARNING = """Sharing the memory store through git
+
+The store in .claude/relate/db will be tracked by git, so that a commit and a push send it
+to everyone who can read the repository. It contains more than code structure:
+
+  - what was typed in Claude Code sessions (prompts), Claude's replies and the shell
+    commands that were run, which can include names, internal URLs or secrets pasted by mistake;
+  - file paths, symbol signatures and excerpts of documents, decisions and meeting notes,
+    with the names of meeting participants;
+  - all of it stays in the git history even after the store is changed or removed.
+
+This is NOT recommended on a public repository: anyone could read those sessions.
+
+Practical limits: the store is binary data that changes at every session, so the repository
+grows and two people cannot merge their versions: one of them wins. Commit it while no
+Claude Code session is writing to it."""
+
+
+def share_store(off=False, yes=False):
+    """Switch .gitignore between a local store and a store tracked by git."""
+    root = config.project_root()
+    ignore = root / ".gitignore"
+    lines = ignore.read_text("utf-8").splitlines() if ignore.exists() else []
+    kept = [line for line in lines if line not in LOCAL_STORE + SHARED_STORE]
+    if off:
+        ignore.write_text("\n".join(kept + LOCAL_STORE) + "\n", "utf-8")
+        print("The store is local again: .gitignore ignores .claude/relate/.\n"
+              "If it was already committed, it is still in the repository and its history. To stop tracking it:\n"
+              "  git rm -r --cached .claude/relate\n"
+              "Removing it from past commits needs a history rewrite.")
+        return 0
+    print(SHARE_WARNING + "\n")
+    if not yes:
+        if not sys.stdin or not sys.stdin.isatty():
+            print("Not changed. Run it again with --yes once you have read the warning above.")
+            return 1
+        if input("Type 'yes' to let git track the store: ").strip().lower() != "yes":
+            print("Not changed.")
+            return 1
+    ignore.write_text("\n".join(kept + SHARED_STORE) + "\n", "utf-8")
+    try:                                    # fold pending writes into the store files before they are committed
+        with store.write_lock():
+            store.run(".checkpoint\n")
+    except (store.RelateError, OSError, ValueError, subprocess.SubprocessError):
+        pass
+    print("Done: .gitignore now lets git track .claude/relate/db and its description files.\n"
+          "Nothing was added or committed. When you are ready:\n"
+          "  git add .gitignore .claude/relate\n"
+          "  git status          # check what is about to be shared\n"
+          "The access token of the playground, logs and local state stay ignored.\n"
+          "To go back: relate-codemem sharedb --off")
+    return 0
 
 
 # ---------------------------------------------------------------- project init
@@ -139,8 +202,8 @@ def init_project(target, overrides=None):
 
     ignore = target / ".gitignore"
     lines = ignore.read_text("utf-8").splitlines() if ignore.exists() else []
-    if ".claude/relate/" not in lines:
-        ignore.write_text("\n".join(lines + ["# relate-codemem store (local)", ".claude/relate/"]) + "\n", "utf-8")
+    if not any(line.startswith(".claude/relate/") for line in lines):      # local, or shared by sharedb
+        ignore.write_text("\n".join(lines + [LOCAL_STORE[0], LOCAL_STORE[1]]) + "\n", "utf-8")
     config.reset(target)
     ecfg = config.embedding_config()
     print(f"relate-codemem initialised in {target}")

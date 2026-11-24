@@ -1,6 +1,7 @@
 """Command line: `relate-codemem <command>` (alias `rcm`)."""
 import argparse
 import json
+import os
 import subprocess
 import sys
 import webbrowser
@@ -20,20 +21,25 @@ def _overrides(args):
     return project.embedding_overrides(args.embeddings, args.model, args.url, args.api_key_env, args.dimensions)
 
 
-def playground(bolt, http, open_browser):
+def playground(bolt, http, open_browser, password=None):
     """Serve the project store read-only on the loopback interface until interrupted.
 
     relate has no local playground of its own (the one on its site runs an in-browser
     database); what it offers for a store on disk is the Bolt and HTTP surfaces, which
-    Neo4j Browser can connect to."""
+    Neo4j Browser can connect to. Without a password relate generates a token and keeps
+    it beside the store; a chosen password is easier to type into Neo4j Browser."""
     store.ensure_store()
+    password = password or config.setting("PLAYGROUND_PASSWORD")[0]
+    if password and (":" in password or password.lower() == "none" or len(password) < 4):
+        raise store.RelateError("the playground password needs at least 4 characters, without ':', and cannot be 'none'")
+    secret = "the password you chose" if password else f"the token in {store.db()}.auth-token (created on the first run)"
     link = f"https://browser.neo4j.io/?connectURL=bolt://relate@127.0.0.1:{bolt}"
     print(f"""Serving the project memory read-only (it follows new commits). Stop with Ctrl-C.
 
   Bolt      bolt://127.0.0.1:{bolt}
   HTTP API  http://127.0.0.1:{http}
   user      relate
-  password  the token in {store.db()}.auth-token (created on the first run)
+  password  {secret}
 
 Explore it in Neo4j Browser, which runs in your web browser and talks to this machine only:
   {link}
@@ -41,9 +47,12 @@ Try:  MATCH (a:Symbol)-[r:CALLS]->(b:Symbol) RETURN a, r, b LIMIT 100
 """, flush=True)
     if open_browser:
         webbrowser.open(link)
+    # the credential goes through the environment, not the command line, where other
+    # processes of the machine could read it
+    env = dict(os.environ, RELATE_AUTH=f"relate:{password}") if password else None
     try:
         return subprocess.call([store.relate_bin(), "serve", "--database", str(store.db()), "--read-only=live",
-                                "--bolt", str(bolt), "--http", str(http)],
+                                "--bolt", str(bolt), "--http", str(http)], env=env,
                                stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, **config.NO_WINDOW)
     except KeyboardInterrupt:
         return 0
@@ -109,6 +118,11 @@ def build_parser():
     a.add_argument("--bolt", type=int, default=7688, help="Bolt port (default 7688)")
     a.add_argument("--http", type=int, default=7475, help="HTTP query API port (default 7475)")
     a.add_argument("--open", action="store_true", help="open Neo4j Browser in the default web browser")
+    a.add_argument("--password", help="password of the user `relate`, instead of a generated token; also read from "
+                                      "RELATE_CODEMEM_PLAYGROUND_PASSWORD (environment or .claude/settings.local.json)")
+    a = sub.add_parser("sharedb", help="let git track the store, to share the memory through the repository")
+    a.add_argument("--off", action="store_true", help="go back to a local store that git ignores")
+    a.add_argument("--yes", action="store_true", help="confirm: I have read the warning about personal data")
     a = sub.add_parser("query", help="read-only Cypher")
     a.add_argument("cypher")
     sub.add_parser("schema", help="the graph model")
@@ -228,7 +242,9 @@ def main(argv=None):
         elif args.cmd == "diff-impact":
             print(queries.diff_impact(args.ref, args.depth))
         elif args.cmd == "playground":
-            return playground(args.bolt, args.http, args.open)
+            return playground(args.bolt, args.http, args.open, args.password)
+        elif args.cmd == "sharedb":
+            return project.share_store(off=args.off, yes=args.yes)
     except (store.RelateError, config.ConfigError, subprocess.SubprocessError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

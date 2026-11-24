@@ -167,6 +167,7 @@ def test_playground_serves_the_store_read_only(project):
             s.bind(("127.0.0.1", 0))
             ports.append(s.getsockname()[1])
     env = dict(os.environ, **{config.ENV + "PROJECT": str(project)})
+    env[config.ENV + "PLAYGROUND_PASSWORD"] = "chosen-pass"
     proc = subprocess.Popen([sys.executable, "-m", "relate_codemem", "playground", "--bolt", str(ports[0]),
                              "--http", str(ports[1])], cwd=project, env=env, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **config.NO_WINDOW)
@@ -180,6 +181,22 @@ def test_playground_serves_the_store_read_only(project):
                 time.sleep(0.3)
         assert document is not None, "the HTTP surface did not answer"
         assert document["bolt_direct"].endswith(str(ports[0]))
+
+        def query(password):
+            import base64
+            import urllib.error
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{ports[1]}/db/neo4j/query/v2", data=json.dumps({"statement": "RETURN 1 AS one"}).encode(),
+                headers={"Content-Type": "application/json",
+                         "Authorization": "Basic " + base64.b64encode(f"relate:{password}".encode()).decode()})
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    return response.status
+            except urllib.error.HTTPError as exc:
+                return exc.code
+
+        assert query("chosen-pass") in (200, 202) and query("wrong") == 401      # the chosen password is the credential
+        assert not (project / ".claude" / "relate" / "db.auth-token").exists()   # and no token was generated
     finally:
         proc.kill()
         proc.wait(10)

@@ -63,7 +63,7 @@ The installer:
    provider is `local`;
 3. runs `relate-codemem setup`, which records the default provider in the user
    configuration, writes the Claude Code skill to
-   `~/.claude/skills/relate-codemem-*/` (init, ask, impact, playground) and
+   `~/.claude/skills/relate-codemem-*/` (init, ask, impact, playground, sharedb) and
    prints the `doctor` report.
 
 ## PATH
@@ -89,5 +89,7 @@ instead of `uv tool upgrade`.
 
 Commit `.claude/settings.json`, `.claude/relate-codemem.json`, `.mcp.json` and
 `CLAUDE.md`. Each teammate installs relate-codemem once; their store is built
-locally by the hooks and by `relate-codemem index`. Someone without the tool
+locally by the hooks and by `relate-codemem index`. Sharing the store itself
+through git is possible with `relate-codemem sharedb`, on a private
+repository only: read its warning first. Someone without the tool
 sees a failing-hook notice in Claude Code but can keep working.

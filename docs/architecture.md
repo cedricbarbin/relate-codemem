@@ -293,7 +293,16 @@ questions as MCP prompts.
 interface (`relate serve` with the Bolt and HTTP surfaces, basic auth with a
 token kept beside the store) so that Neo4j Browser can display the graph.
 relate's own playground runs a database inside the web page and cannot open
-a store on disk.
+a store on disk. By default relate generates an access token and keeps it in
+`.claude/relate/db.auth-token`; `--password`, or
+`RELATE_CODEMEM_PLAYGROUND_PASSWORD`, sets a chosen password instead, handed
+to relate through its environment.
+
+`relate-codemem sharedb` rewrites the store's rule in `.gitignore`: instead
+of ignoring `.claude/relate/` it ignores its contents except `db/`,
+`deps.json`, `embeddings.json` and the schema marker. The token, the logs,
+the locks, the event spool and `state.json` (file times of one machine) are
+never shared. It adds and commits nothing itself.
 
 Decisions and notes follow the same no-delete rule on the knowledge side: an
 entry written with the `--slot` of an existing current entry, or with
