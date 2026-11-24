@@ -5,6 +5,7 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 
 from conftest import needs_relate
 from relate_codemem import cli, config
@@ -72,8 +73,14 @@ def test_mcp_server_answers_and_sees_later_writes(project, capsys):
 
         # a writer works while the server is open, and the server sees the commit
         assert cli.main(["note", "written", "beside", "the", "server", "--slot", "mcp/test"]) == 0
-        found = client.send("tools/call", {"name": "read_cypher", "arguments": {
-            "statement": "MATCH (n:Note) RETURN n.text AS text LIMIT 5"}})
-        assert "written beside the server" in json.dumps(found)
+        # (the live server follows commits with a short delay)
+        deadline = time.monotonic() + 15
+        while True:
+            found = json.dumps(client.send("tools/call", {"name": "read_cypher", "arguments": {
+                "statement": "MATCH (n:Note) RETURN n.text AS text LIMIT 5"}}))
+            if "written beside the server" in found or time.monotonic() > deadline:
+                break
+            time.sleep(0.3)
+        assert "written beside the server" in found
     finally:
         client.close()
