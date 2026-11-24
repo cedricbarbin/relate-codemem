@@ -1,0 +1,29 @@
+# Dependabot version updates.
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+#
+# Only GitHub Actions are tracked: the package has no required Python
+# dependency, and its optional ones (fastembed, pytest) are declared with open
+# lower bounds and no lock file, so there is no pinned version to update.
+# Security alerts for Python dependencies are a repository setting, not this file.
+
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Paris"
+    # One pull request for all action updates instead of one per action.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"

@@ -1,0 +1,56 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The commands you ran, in order. A minimal project helps a lot.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `relate-codemem doctor`
+      description: >
+        Run it in the affected project and paste the result. Remove anything
+        you do not want public (paths, URLs).
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+    validations:
+      required: true
+  - type: dropdown
+    id: embeddings
+    attributes:
+      label: Embedding provider
+      options:
+        - local
+        - ollama
+        - openai
+        - none
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant lines of `.claude/relate/memory.log`
+      description: Hooks never fail the session; their errors go to this file.
+      render: text
