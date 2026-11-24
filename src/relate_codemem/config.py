@@ -25,7 +25,7 @@ NO_WINDOW = {"creationflags": 0x08000000} if os.name == "nt" else {}
 
 APP = "relate-codemem"
 ENV = "RELATE_CODEMEM_"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 PROJECT_DEFAULTS = {
     "decisions_dirs": ["docs/decisions", "docs/adr", "adr"],

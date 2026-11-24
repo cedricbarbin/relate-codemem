@@ -204,7 +204,8 @@ def show_file(path):
         "RETURN t.path + CASE WHEN coalesce(r.via, 'import') = 'import' THEN '' ELSE ' (' + r.via + ')' END "
         "ORDER BY t.path } AS uses, "
         "COLLECT { MATCH (o:File)-[:DEPENDS_ON]->(f) WHERE o.deleted = false RETURN o.path ORDER BY o.path } AS usedBy, "
-        "COLLECT { MATCH (f)-[:IMPORTS]->(m:Module) RETURN m.name ORDER BY m.name LIMIT 40 } AS imports;"
+        "COLLECT { MATCH (f)-[r:IMPORTS]->(m:Module) RETURN m.name + CASE WHEN r.scope IS NULL OR r.scope = 'internal' "
+        "THEN '' ELSE ' (' + r.scope + ')' END ORDER BY m.name LIMIT 60 } AS imports;"
         "MATCH (d)-[:AFFECTS|DOCUMENTED_IN]->(:File {path: $p.path}) WHERE d:Decision OR d:Note "
         "RETURN labels(d) AS labels, d.id AS id, d.title AS title, d.status AS status, d.date AS date "
         "ORDER BY coalesce(d.date, '') DESC LIMIT 20;"
@@ -255,6 +256,8 @@ def show_symbol(name):
                 "s.signature AS signature, s.changedRev AS changed, "
                 "COLLECT { MATCH (s)-[r:CALLS]->(t:Symbol) RETURN " + link + " ORDER BY t.qualname LIMIT 40 } AS calls, "
                 "COLLECT { MATCH (t:Symbol)-[r:CALLS]->(s) RETURN " + link + " ORDER BY t.qualname LIMIT 40 } AS callers, "
+                "COLLECT { MATCH (s)-[:CALLS]->(e:External) RETURN e.name + ' (' + e.scope + ')' ORDER BY e.name LIMIT 40 } AS outside, "
+                "COLLECT { MATCH (s)-[:EXTENDS]->(e:External) RETURN e.name + ' (' + e.scope + ')' ORDER BY e.name LIMIT 20 } AS foreign, "
                 "COLLECT { MATCH (s)-[r:EXTENDS]->(t:Symbol) RETURN " + other + " + ' (' + r.kind + ')' ORDER BY t.qualname LIMIT 20 } AS parents, "
                 "COLLECT { MATCH (t:Symbol)-[r:EXTENDS]->(s) RETURN " + other + " ORDER BY t.qualname LIMIT 40 } AS children, "
                 "COLLECT { MATCH (s)-[:OVERRIDES]->(t:Symbol) RETURN " + other + " ORDER BY t.qualname LIMIT 20 } AS above, "
@@ -265,8 +268,9 @@ def show_symbol(name):
         return search(name, kind="code")
     for s in rows:
         print(f"{s['path']}:{s['line']}  {s['kind']} {s['name']}  (changed at r{s['changed']})\n    {s['signature']}")
-        for label, key in (("extends", "parents"), ("extended by", "children"), ("overrides", "above"),
-                           ("overridden by", "below"), ("calls", "calls"), ("called by", "callers")):
+        for label, key in (("extends", "parents"), ("extends", "foreign"), ("extended by", "children"),
+                           ("overrides", "above"), ("overridden by", "below"), ("calls", "calls"),
+                           ("calls", "outside"), ("called by", "callers")):
             for line in s[key]:
                 print(f"    {label}: {line}")
 
@@ -297,7 +301,7 @@ MODEL_DOC = """Graph model (labels, key property, relationships)
   FileRevision {id}      id = path@rev; rev, hash, at, gitCommit, gitBranch, session, deleted
   Symbol {id}            id = path::qualname; name, kind, signature, startLine, endLine, hash, sinceRev, changedRev
   Chunk {id}             id = path#ord; title (heading trail), text, startLine, kind doc|decision|meeting
-  Module {name}          import target that is not a project file
+  Module {name}          import target as written; root = the library it belongs to
   Decision {id}          title, text, status, date, slot, source file|session, recordedAt, closedAt
   Note {id}              title, text, slot, date, recordedAt, closedAt
   Meeting {id}           id = path; title, date     Person {name}
@@ -309,6 +313,10 @@ MODEL_DOC = """Graph model (labels, key property, relationships)
   (Symbol)-[:CALLS {via, distance, candidates, inherited}]->(Symbol)   needs the tree-sitter extra
   CALLS.via = receiver | self | new | scope | name (by name only); candidates > 1 = ambiguous
   (Symbol)-[:EXTENDS {kind: extends|implements}]->(Symbol)   type to supertype
+  External {id}          a type, member or function outside the project: name, kind, module, root, scope
+  (Symbol)-[:CALLS|EXTENDS]->(External)   what leaves the project; External.scope = stdlib | external
+  IMPORTS.scope = internal | stdlib | external | unresolved; Module.root = the library
+  To stay inside the project, give the target its label: (a:Symbol)-[:CALLS]->(b:Symbol)
   (Symbol)-[:OVERRIDES]->(Symbol)   a method to the nearest one above that it redefines;
     what a call on an interface method m may run: MATCH (impl)-[:OVERRIDES*]->(m)
   DEPENDS_ON.via = import | qualified | wildcard | package (same package, no import)

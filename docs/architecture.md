@@ -38,7 +38,8 @@ parameters through a JSON file. See
 | `FileRevision` | `id` = `path@rev` | `rev`, `hash`, `at`, `gitCommit`, `gitBranch`, `session`, `deleted` |
 | `Symbol` | `id` = `path::qualname` | `name`, `kind`, `signature`, `startLine`, `endLine`, `hash`, `sinceRev`, `changedRev` |
 | `Chunk` | `id` = `path#ord` | `title` (heading trail), `text`, `startLine`, `kind` |
-| `Module` | `name` | an import that is not a project file |
+| `Module` | `name` | an import target, as written; `root` is the library it belongs to |
+| `External` | `id` | a type, member or function outside the project: `name`, `kind`, `module`, `root`, `scope` |
 | `Decision` | `id` | `title`, `text`, `status`, `date`, `slot`, `source` (file or session), `recordedAt`, `closedAt` |
 | `Note` | `id` | `title`, `text`, `slot`, `date`, `recordedAt`, `closedAt` |
 | `Meeting` | `id` = path | `title`, `date` |
@@ -53,6 +54,7 @@ parameters through a JSON file. See
 (File)-[:DEPENDS_ON {via}]->(File)           (File)-[:IMPORTS]->(Module)
 (Symbol)-[:CALLS {via, distance, candidates, inherited}]->(Symbol)
 (Symbol)-[:EXTENDS {kind}]->(Symbol)         (Symbol)-[:OVERRIDES]->(Symbol)
+(Symbol)-[:CALLS|EXTENDS]->(External)        IMPORTS {scope}: internal, stdlib, external, unresolved
 (Decision)-[:DOCUMENTED_IN]->(File)          (Decision|Note)-[:AFFECTS]->(File)
 (Decision|Note)-[:SUPERSEDES]->(same label)  (Decision|Note)-[:MADE_IN]->(Session)
 (Meeting)-[:RECORDED_IN]->(File)             (Person)-[:ATTENDED]->(Meeting)
@@ -209,6 +211,39 @@ RETURN caller.qualname, impl.qualname LIMIT 50
 
 and who may call an implementation by walking it upwards, then `CALLS`.
 `relate-codemem symbol NAME` prints all of these.
+
+### What leaves the project
+
+Relationships between project elements and relationships that lead outside
+are told apart:
+
+- Every `IMPORTS` relationship has a `scope`: `internal` (the import resolves
+  to a project file), `stdlib` (the language's own library, where its naming
+  convention allows telling: Python, Go, Java, Kotlin, Scala, C#, Rust,
+  Node.js built-ins), `external` (anything else) or `unresolved` (a relative
+  import whose target is missing). The `Module` carries `root`, the library
+  the import belongs to (`org.springframework`, `numpy`, `@nestjs/common`).
+- A call or a supertype that no project symbol answers is linked to an
+  `External` node when its name was brought in by an import that leads out
+  of the project: `(Symbol)-[:CALLS]->(External)` for
+  `client.getForObject()` on an imported `RestTemplate`, `np.array()` or an
+  imported function; `(Symbol)-[:EXTENDS]->(External)` for
+  `extends JpaRepository`. The `External` node has `name`, `kind` (`type`,
+  `member`, `function`), `module`, `root` and `scope`.
+
+`DEPENDS_ON`, `OVERRIDES` and links to a `Symbol` are always inside the
+project. To stay inside, give the target its label
+(`(a:Symbol)-[:CALLS]->(b:Symbol)`); to see what a method reaches outside:
+
+```cypher
+MATCH (s:Symbol)-[:CALLS]->(e:External {scope: 'external'})
+RETURN e.root AS library, count(*) AS calls ORDER BY calls DESC LIMIT 20
+```
+
+Unresolved does not mean external: a call is only called external when an
+import proves it. Types used without an import (`String`, `List`), calls
+whose receiver has no written type and chained receivers (`os.path.join()`)
+are left out, as before.
 
 Like dependencies, these links are resolved again over stored facts on every
 run, so an unchanged caller follows a callee that moves, appears or

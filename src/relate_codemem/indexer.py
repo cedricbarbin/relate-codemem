@@ -202,7 +202,30 @@ SET r.kind = e.kind;
 UNWIND $p.overrides AS o
 MATCH (a:Symbol {id: o.method})
 MATCH (b:Symbol {id: o.above})
-MERGE (a)-[:OVERRIDES]->(b)
+MERGE (a)-[:OVERRIDES]->(b);
+
+UNWIND $p.external AS x
+MERGE (e:External {id: x.id})
+SET e.name = x.id, e.kind = x.kind, e.module = x.module, e.root = x.root, e.scope = x.scope;
+
+UNWIND $p.externalCalls AS x
+MATCH (a:Symbol {id: x.source})
+MATCH (e:External {id: x.id})
+MERGE (a)-[:CALLS]->(e);
+
+UNWIND $p.externalExtends AS x
+MATCH (a:Symbol {id: x.source})
+MATCH (e:External {id: x.id})
+MERGE (a)-[:EXTENDS]->(e);
+
+MATCH (e:External) WHERE COUNT { (e)<--() } = 0
+DELETE e
+"""
+
+IMPORT_SCOPE_SCRIPT = """
+UNWIND $p.imports AS i
+MATCH (:File {path: i.path})-[r:IMPORTS]->(m:Module {name: i.module})
+SET r.scope = i.scope, m.root = i.root
 """
 
 
@@ -232,6 +255,7 @@ def save_state(state):
 DERIVED = (("symbols", "MATCH (n:Symbol)", "DETACH DELETE n"),
            ("chunks", "MATCH (n:Chunk)", "DETACH DELETE n"),
            ("modules", "MATCH (n:Module)", "DETACH DELETE n"),
+           ("external targets", "MATCH (n:External)", "DETACH DELETE n"),
            ("dependencies", "MATCH (:File)-[n:DEPENDS_ON]->()", "DELETE n"))
 
 
@@ -271,7 +295,7 @@ def index(paths=None, full=False, session=None, quiet=False, rebuild=False):
             if not quiet:
                 print("dependency facts are missing, outdated or built with another parser: "
                       "analysing every file again")
-        facts, old_edges, old_calls = loaded or ({}, {}, {})
+        facts, old_edges, old_calls, old_scopes = loaded or ({}, {}, {}, {})
         state = {} if full else load_state()
         if paths:
             targets = []
@@ -361,7 +385,8 @@ def index(paths=None, full=False, session=None, quiet=False, rebuild=False):
                 facts.pop(path, None)
             touched = {c[0] for c in changed}
             live = ({path for path, row in known.items() if row["hash"] is not None} | touched) - gone
-            edges = deps.resolve(facts, live)
+            scopes = {}
+            edges = deps.resolve(facts, live, scopes)
             rewrite = sorted(path for path, found in edges.items()
                              if path in touched or found != old_edges.get(path, {}))
             for start in range(0, len(rewrite), 400):
@@ -369,14 +394,22 @@ def index(paths=None, full=False, session=None, quiet=False, rebuild=False):
                 store.write(DEPS_SCRIPT, {"paths": part, "deps": [
                     {"path": path, "target": target, "via": via}
                     for path in part for target, via in sorted(edges[path].items())]})
+            # Where each import leads: into the project, to the standard library, or outside.
+            rewrite = sorted(path for path in scopes if path in touched or scopes[path] != old_scopes.get(path))
+            for start in range(0, len(rewrite), 400):
+                store.write(IMPORT_SCOPE_SCRIPT, {"imports": [
+                    {"path": path, "module": module[:200], "scope": scope,
+                     "root": deps.module_root(module, facts[path]["lang"])}
+                    for path in rewrite[start:start + 400] for module, scope in scopes[path].items()]})
             # Calls, inheritance and overrides are resolved after dependencies: a symbol only
             # reaches what its file can see.
-            calls = deps.resolve_calls(facts, edges, live)
+            calls = deps.resolve_calls(facts, edges, live, scopes)
             # every re-analysed file is rewritten, so that a full run also clears calls it no longer finds
             rewrite = sorted(path for path in set(calls) | set(old_calls) | touched
                              if path in live and (path in touched or calls.get(path) != old_calls.get(path)))
             for start in range(0, len(rewrite), 200):
                 part = rewrite[start:start + 200]
+                outside = [x for path in part for x in calls.get(path, {}).get("external", ())]
                 store.write(CALLS_SCRIPT, {
                     "paths": part,
                     "calls": [{"caller": a, "callee": b, "via": via, "distance": distance,
@@ -386,8 +419,11 @@ def index(paths=None, full=False, session=None, quiet=False, rebuild=False):
                     "extends": [{"child": a, "parent": b, "kind": kind}
                                 for path in part for a, b, kind in calls.get(path, {}).get("extends", ())],
                     "overrides": [{"method": a, "above": b}
-                                  for path in part for a, b in calls.get(path, {}).get("overrides", ())]})
-            deps.save(deps_path(), facts, edges, calls)
+                                  for path in part for a, b in calls.get(path, {}).get("overrides", ())],
+                    "external": [{"id": x[2], "kind": x[3], "module": x[4], "root": x[5], "scope": x[6]} for x in outside],
+                    "externalCalls": [{"source": x[0], "id": x[2]} for x in outside if x[1] == "CALLS"],
+                    "externalExtends": [{"source": x[0], "id": x[2]} for x in outside if x[1] == "EXTENDS"]})
+            deps.save(deps_path(), facts, edges, calls, scopes)
         save_state(new_state)
     summary = (f"indexed {len(changed)} changed file(s), {len(deleted)} deleted, "
                f"{counts['symbols']} symbols, {counts['chunks']} chunks")

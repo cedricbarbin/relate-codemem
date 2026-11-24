@@ -9,13 +9,15 @@ declaring a name it uses.
 The analysis is lexical: a name that appears in the code of a file links it to the
 file that declares that name in a visible package. There is no type inference.
 """
+import ast
 import json
 import posixpath
 import re
+import sys
 
 from . import parse
 
-VERSION = 3
+VERSION = 4
 
 # origin of an edge, strongest first
 VIA = ("import", "qualified", "wildcard", "package")
@@ -63,7 +65,8 @@ def facts(path, text, lang, symbols, imports):
 
     `symbols` are the extracted symbols of the file, `imports` the (module, candidate
     paths) pairs from extract_imports."""
-    out = {"lang": lang, "imports": [[m, c] for m, c in imports if m][:400]}
+    out = {"lang": lang, "imports": [[m, c] for m, c in imports if m][:400],
+           "names": imported_names(text, lang, imports)}
     if lang not in PACKAGE_LANGS:
         return out
     if lang == "go":
@@ -208,9 +211,9 @@ MAX_CANDIDATES = 3
 CALL_VIA = ("receiver", "self", "new", "scope", "name")
 
 
-def resolve_calls(files, edges, live):
-    """-> {path: {"calls": [...], "extends": [...], "overrides": [...]}}, links leaving the
-    symbols of each file.
+def resolve_calls(files, edges, live, scopes=None):
+    """-> {path: {"calls": [...], "extends": [...], "overrides": [...], "external": [...]}},
+    links leaving the symbols of each file.
 
     calls: [caller id, callee id, via, distance, candidates, inherited]. A call reaches a
     definition in its own file (distance 0) or in a file it depends on (1), and from there
@@ -224,7 +227,12 @@ def resolve_calls(files, edges, live):
 
     extends: [type id, supertype id, "extends" | "implements"].
     overrides: [method id, id of the nearest method above that it redefines]. Following
-    them downwards from an interface method gives what a call on the interface may run."""
+    them downwards from an interface method gives what a call on the interface may run.
+
+    external: [symbol id, "CALLS" | "EXTENDS", external id, kind, module, root, scope]. A call
+    or a supertype that no project symbol answers is external when its name comes from an
+    import that leads out of the project (`scopes`, from resolve()). What has no such import
+    is left out: unresolved does not mean external."""
     by_file = {}
     for path, f in files.items():
         if path not in live or "defs" not in f:
@@ -282,6 +290,21 @@ def resolve_calls(files, edges, live):
     for path, f in files.items():
         if path not in by_file:
             continue
+        outside = []
+        imported, leads = f.get("names", {}), (scopes or {}).get(path, {})
+
+        def external(source, relation, local, member, kind):
+            """Records `local[.member]` as an external target when `local` was imported from outside."""
+            entry = imported.get(local)
+            scope = None
+            if entry:           # `import os.path` binds `os`: the module is known under a longer name
+                scope = leads.get(entry[0]) or next((s for m, s in leads.items() if m.startswith(entry[0] + ".")), None)
+            if scope not in ("external", "stdlib"):
+                return
+            module = entry[0]
+            name = ".".join(x for x in (module.replace("::", ".").replace("\\", "."), entry[1], member) if x)
+            outside.append([source, relation, name, kind, module, module_root(module, f["lang"]), scope])
+
         distance_of = {p: d for d, ring in enumerate(rings(path)) for p in ring}
         owners = {sid: owner.rsplit(".", 1)[-1] for sid, _, owner, _, _ in f["defs"]}
         rows = {}
@@ -322,6 +345,11 @@ def resolve_calls(files, edges, live):
                     hits = [(sid, distance, 0) for sid, _, distance in exact or [h for h in found if h[1] < 0]]
                     via = "name"
                 targets = {sid: (distance, levels) for sid, distance, levels in hits if sid != caller}
+                if not hits:
+                    if kind in ("type", "unknown") and target:
+                        external(caller, "CALLS", target, name, "member")
+                    elif kind in ("new", "none"):
+                        external(caller, "CALLS", name, "", "type" if kind == "new" or name[:1].isupper() else "function")
                 if not targets or len(targets) > MAX_CANDIDATES:
                     continue
                 for callee, (distance, levels) in targets.items():
@@ -339,6 +367,8 @@ def resolve_calls(files, edges, live):
                     if 0 < len(found) <= MAX_CANDIDATES:
                         kind = "implements" if parent in contracts.get(type_name, ()) else "extends"
                         extends += [[child, sid, kind] for sid in found if sid != child]
+                    elif not found:
+                        external(child, "EXTENDS", parent, "", "type")
         for (type_name, name), methods in by_file[path]["methods"].items():
             if type_name not in f.get("supers", {}) or name == type_name:
                 continue
@@ -347,10 +377,100 @@ def resolve_calls(files, edges, live):
                 overrides += [[sid, other] for other, _ in above[:MAX_CANDIDATES] if other != sid]
 
         links = {"calls": sorted([a, b, *rest] for (a, b), rest in rows.items()),
-                 "extends": sorted(extends), "overrides": sorted(overrides)}
+                 "extends": sorted(extends), "overrides": sorted(overrides),
+                 "external": sorted({tuple(row[:3]): row for row in outside}.values())}
         if any(links.values()):
             result[path] = links
     return result
+
+
+_JS_IMPORT = re.compile(r"""import\s+(?:type\s+)?([^'"`;]*?)\s+from\s*['"]([^'"]+)['"]""")
+_JS_REQUIRE = re.compile(r"""(?:const|let|var)\s+(\{[^}]*\}|[A-Za-z_$][\w$]*)\s*=\s*require\(\s*['"]([^'"]+)['"]\s*\)""")
+_GO_IMPORT = re.compile(r'^\s*(?:import\s+)?(?:([\w.]+)\s+)?"([\w./-]+)"\s*$', re.M)
+
+
+def imported_names(text, lang, imports):
+    """{local name: [module, member]}: what each import makes usable in the file. `member` is
+    the name inside the module, or "" when the local name stands for the module itself.
+    The module is spelled as in `imports`, so that its resolution can be looked up."""
+    names = {}
+    if lang == "python":
+        try:
+            tree = ast.parse(text)
+        except (SyntaxError, ValueError, RecursionError):
+            return names
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for a in node.names:
+                    names[a.asname or a.name.split(".")[0]] = [a.name if a.asname else a.name.split(".")[0], ""]
+            elif isinstance(node, ast.ImportFrom):
+                for a in node.names:
+                    if node.level and not node.module:        # from . import x: x is a module
+                        names[a.asname or a.name] = ["." * node.level + a.name, ""]
+                    elif a.name != "*":
+                        names[a.asname or a.name] = ["." * node.level + (node.module or ""), a.name]
+    elif lang in ("javascript", "typescript"):
+        for clause, module in _JS_IMPORT.findall(text) + _JS_REQUIRE.findall(text):
+            braces = re.search(r"\{([^}]*)\}", clause)
+            for part in (braces.group(1).split(",") if braces else []):
+                bits = re.split(r"\s+as\s+|\s*:\s*", part.strip().removeprefix("type ").strip())
+                if bits[0]:
+                    names[bits[-1].strip()] = [module, bits[0].strip()]
+            star = re.search(r"\*\s+as\s+([\w$]+)", clause)
+            if star:
+                names[star.group(1)] = [module, ""]
+            default = re.match(r"\s*([A-Za-z_$][\w$]*)\s*(?:,|$)", clause)
+            if default:
+                names[default.group(1)] = [module, ""]
+    elif lang == "go":
+        for alias, module in _GO_IMPORT.findall(text):
+            last = [s for s in module.split("/") if not re.fullmatch(r"v\d+", s)][-1]
+            if alias not in ("_", "."):
+                names[alias or last] = [module, ""]
+    else:
+        for module, _ in imports:
+            if module and not module.endswith((".", "._", "*")):
+                names[re.split(r"[.\\/]|::", module)[-1]] = [module, ""]
+    return dict(list(names.items())[:400])
+
+
+_STDLIB_PREFIX = {
+    "java": ("java.", "javax.", "jdk."), "kotlin": ("kotlin.", "java.", "javax."),
+    "scala": ("scala.", "java.", "javax."), "csharp": ("System",), "rust": ("std::", "core::", "alloc::"),
+    "swift": ("Foundation", "Swift", "Dispatch"), "php": (),
+}
+_NODE_BUILTINS = {"assert", "buffer", "child_process", "cluster", "crypto", "dns", "events", "fs", "http", "http2",
+                  "https", "net", "os", "path", "perf_hooks", "process", "querystring", "readline", "stream",
+                  "string_decoder", "timers", "tls", "url", "util", "v8", "vm", "worker_threads", "zlib"}
+
+
+def external_scope(module, lang):
+    """"stdlib" when an import that is not in the project names the language's own library,
+    "external" otherwise. Only the conventions that can be read off the name are used."""
+    if lang == "python":
+        return "stdlib" if module.split(".")[0] in getattr(sys, "stdlib_module_names", ()) else "external"
+    if lang == "go":                # third-party import paths start with a domain name
+        return "external" if "." in module.split("/")[0] else "stdlib"
+    if lang in ("javascript", "typescript"):
+        return "stdlib" if module.startswith("node:") or module.split("/")[0] in _NODE_BUILTINS else "external"
+    if lang in ("c", "cpp", "objc"):
+        return "external"
+    prefixes = _STDLIB_PREFIX.get(lang, ())
+    return "stdlib" if any(module == p.rstrip(".:") or module.startswith(p) for p in prefixes) else "external"
+
+
+def module_root(module, lang):
+    """The library an external module belongs to, as far as its name tells."""
+    if lang in ("javascript", "typescript"):
+        parts = module.removeprefix("node:").split("/")
+        return "/".join(parts[:2]) if module.startswith("@") else parts[0]
+    if lang == "go":
+        parts = module.split("/")
+        return "/".join(parts[:3]) if "." in parts[0] else parts[0]
+    parts = [p for p in re.split(r"[.\\/]|::", module) if p]
+    if lang in JVM and len(parts) > 2:
+        return ".".join(parts[:2])
+    return parts[0] if parts else module
 
 
 def _nearest(paths, origin):
@@ -370,8 +490,12 @@ def _nearest(paths, origin):
     return max(sorted(paths), key=shared)
 
 
-def resolve(files, live):
-    """files: {path: facts}, live: paths that exist. -> {path: {target: via}}."""
+def resolve(files, live, scopes=None):
+    """files: {path: facts}, live: paths that exist. -> {path: {target: via}}.
+
+    When `scopes` is a dict it receives {path: {module: scope}}, where scope says where each
+    import leads: "internal" (a file of the project), "stdlib", "external", or "unresolved"
+    for a relative import whose target is missing."""
     packages = {}   # package key -> {name: [paths]}
     go_dirs = {}    # directory -> package key
     for path, f in files.items():
@@ -443,7 +567,12 @@ def resolve(files, live):
                     candidate = posixpath.normpath(candidate)
                     if candidate in live and candidate != path:
                         link(candidate, "import")
+                        hit = True
                         break
+            if scopes is not None:
+                relative = module.startswith(".") or lang in ("c", "cpp", "objc", "shell") and "/" in module
+                scopes.setdefault(path, {})[module] = (
+                    "internal" if hit else "unresolved" if relative else external_scope(module, lang))
         if key:
             for dotted in f.get("qualified", ()):
                 link_qualified(fam, dotted, "qualified")
@@ -458,7 +587,7 @@ def resolve(files, live):
 
 
 def load(path):
-    """-> (facts, edges, call edges), each by path; None when absent or written by another version."""
+    """-> (facts, edges, symbol links, import scopes), each by path; None when absent or written by another version."""
     try:
         data = json.loads(path.read_text("utf-8"))
     except (OSError, ValueError):
@@ -466,12 +595,12 @@ def load(path):
     if not isinstance(data, dict) or data.get("version") != VERSION or data.get("parser") != parse.mode():
         return None
     return (data.get("files", {}), {p: dict(e) for p, e in data.get("edges", {}).items()},
-            data.get("calls", {}))
+            data.get("calls", {}), data.get("imports", {}))
 
 
-def save(path, files, edges, calls):
+def save(path, files, edges, calls, imports):
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps({"version": VERSION, "parser": parse.mode(), "files": files, "edges": edges,
-                               "calls": calls},
+                               "calls": calls, "imports": imports},
                               separators=(",", ":")), "utf-8")
     tmp.replace(path)

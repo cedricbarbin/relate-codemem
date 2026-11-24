@@ -21,6 +21,9 @@ earlier sessions, and lets Claude search it.
   resolved through the file dependencies, the receiver's written type, the
   type hierarchy and the argument count; each link says how sure it is, and
   the implementations behind an interface call can be queried.
+- **Inside or outside the project.** Imports are classified (project,
+  standard library, external library), and calls or supertypes that an
+  import proves external are kept apart from the internal graph.
 - **Hybrid search.** relate's full-text index and its vector index, fused by
   reciprocal rank. Embeddings are computed locally by default.
 - **Everything stays in the project.** The store is a directory under

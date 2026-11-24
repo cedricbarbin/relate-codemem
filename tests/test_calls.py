@@ -204,3 +204,88 @@ def test_implementations_of_an_interface_method_are_reachable(project, monkeypat
     assert cli.main(["symbol", "Repo.save"]) == 0
     out = capsys.readouterr().out
     assert "overridden by: CachedRepo.save" in out and "overridden by: JpaRepo.save" in out and "called by: Service.run" in out
+
+
+def analyse_all(sources, lang):
+    files = {}
+    for path, text in sources.items():
+        symbols = extract.extract_symbols(path, text, lang, 1)
+        files[path] = deps.facts(path, text, lang, symbols, extract.extract_imports(path, text, lang))
+        files[path].update(deps.call_facts(path, text, lang, symbols, parse.calls(path, text, lang)))
+    live, scopes = set(sources), {}
+    edges = deps.resolve(files, live, scopes)
+    return scopes, deps.resolve_calls(files, edges, live, scopes)
+
+
+def test_imports_calls_and_supertypes_that_leave_the_project(project):
+    scopes, links = analyse_all({
+        "src/p/OrderService.java": """package p;
+
+import java.util.List;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.data.jpa.repository.JpaRepository;
+import p.model.Order;
+
+class OrderService extends JpaRepository {
+    private RestTemplate client;
+
+    Order load(int id) {
+        Order o = new Order();
+        o.touch();
+        mystery.call();
+        return client.getForObject("x", id);
+    }
+}
+""",
+        "src/p/model/Order.java": "package p.model;\n\npublic class Order {\n    public void touch() {\n    }\n}\n",
+    }, "java")
+    assert scopes["src/p/OrderService.java"] == {
+        "java.util.List": "stdlib", "org.springframework.web.client.RestTemplate": "external",
+        "org.springframework.data.jpa.repository.JpaRepository": "external", "p.model.Order": "internal"}
+    found = links["src/p/OrderService.java"]
+    assert [(a.split("::")[1], rel, name, kind, root, scope) for a, rel, name, kind, _, root, scope in found["external"]] == [
+        ("OrderService", "EXTENDS", "org.springframework.data.jpa.repository.JpaRepository", "type",
+         "org.springframework", "external"),
+        ("OrderService.load", "CALLS", "org.springframework.web.client.RestTemplate.getForObject", "member",
+         "org.springframework", "external")]
+    # calls into the project stay internal, and a call that nothing explains is not called external
+    assert {b.split("::")[1] for _, b, *_ in found["calls"]} == {"Order", "Order.touch"}
+
+
+def test_external_calls_through_module_aliases_and_imported_names(project):
+    scopes, links = analyse_all({
+        "app/a.py": "import os.path\nimport numpy as np\nfrom requests import get\nfrom .b import helper\n\n\n"
+                    "def run(x):\n    helper()\n    get(x)\n    return np.array(os.path.join(x))\n",
+        "app/b.py": "def helper():\n    return 1\n",
+    }, "python")
+    assert scopes["app/a.py"] == {"os.path": "stdlib", "numpy": "external", "requests": "external", ".b": "internal"}
+    assert [(name, kind, scope) for _, _, name, kind, _, _, scope in links["app/a.py"]["external"]] == [
+        ("numpy.array", "member", "external"), ("requests.get", "function", "external")]
+    # os.path.join(): the receiver is a chain, not a single name, so nothing is claimed
+
+
+@needs_relate
+def test_what_leaves_the_project_is_stored_apart(project, monkeypatch, capsys):
+    monkeypatch.setenv("RELATE_CODEMEM_EMBEDDINGS", "none")
+    (project / "app").mkdir()
+    (project / "app" / "__init__.py").write_text("VERSION = '1'\n")
+    (project / "app" / "a.py").write_text("import json\nimport requests\nfrom . import VERSION\nfrom .b import helper\n\n\n"
+                                          "def run(x):\n    helper()\n    return requests.get(json.dumps(x))\n")
+    (project / "app" / "b.py").write_text("def helper():\n    return 1\n")
+    indexer.index(quiet=True)
+    imports = store.read("MATCH (:File {path: 'app/a.py'})-[r:IMPORTS]->(m:Module) "
+                         "RETURN m.name AS m, r.scope AS s, m.root AS root ORDER BY m")
+    assert [(r["m"], r["s"]) for r in imports] == [(".VERSION", "internal"), (".b", "internal"), ("json", "stdlib"),
+                                                    ("requests", "external")]
+    assert store.read("MATCH (:Symbol {name: 'run'})-[:CALLS]->(t:Symbol) RETURN t.name AS n") == [{"n": "helper"}]
+    out = store.read("MATCH (:Symbol {name: 'run'})-[:CALLS]->(e:External) RETURN e.name AS n, e.scope AS s, e.root AS r ORDER BY n")
+    assert out == [{"n": "json.dumps", "s": "stdlib", "r": "json"}, {"n": "requests.get", "s": "external", "r": "requests"}]
+    capsys.readouterr()
+    assert cli.main(["symbol", "run"]) == 0 and cli.main(["file", "app/a.py"]) == 0
+    text = capsys.readouterr().out
+    assert "calls: requests.get (external)" in text and "requests (external)" in text and "json (stdlib)" in text
+
+    # the call disappears: so does the external node, which nothing points at any more
+    (project / "app" / "a.py").write_text("from .b import helper\n\n\ndef run(x):\n    return helper()\n")
+    indexer.index(quiet=True)
+    assert store.read("MATCH (e:External) RETURN count(e) AS n") == [{"n": 0}]

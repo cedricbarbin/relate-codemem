@@ -260,6 +260,8 @@ def extract_imports(path, text, lang):
                 cands = []
                 for r in roots:
                     cands += [(r / (rel + ".py")).as_posix(), (r / rel / "__init__.py").as_posix()]
+                if level and isinstance(node, ast.ImportFrom) and not node.module:
+                    cands.append((roots[0] / "__init__.py").as_posix())   # from . import name: defined by the package
                 out.append((name, cands))
         return out
     for rx in IMPORT_RX.get(lang, []):

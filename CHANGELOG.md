@@ -33,6 +33,11 @@ All notable changes to this project are documented here. The format follows
   chunks, modules, dependencies, calls, embeddings) and analyses the project
   again; revisions, sessions, decisions and notes are kept.
 
+- Internal and external relationships are told apart: `IMPORTS` carries a
+  `scope` (`internal`, `stdlib`, `external`, `unresolved`) and `Module` a
+  `root` library; calls and supertypes proven external by an import are
+  linked to `External` nodes. `file` and `symbol` show them.
+
 ### Changed
 
 - File dependencies are resolved from declared symbols instead of guessed
