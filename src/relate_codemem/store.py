@@ -166,7 +166,7 @@ def _run(cmd, script, params, read_only, timeout):
             cmd += ["--fetch-params", f"p={tmp}"]
         env = dict(os.environ, RELATE_AGENT_MODE="0")
         for attempt in range(6):
-            proc = subprocess.run(cmd, input=script, capture_output=True, text=True,
+            proc = subprocess.run(cmd, input=script, capture_output=True, text=True, **config.NO_WINDOW,
                                   encoding="utf-8", errors="replace", env=env, timeout=timeout)
             crashed = proc.returncode not in (0, 1, 2, 5, 6, 7)
             if proc.returncode == 5:            # store locked by another opener: retry

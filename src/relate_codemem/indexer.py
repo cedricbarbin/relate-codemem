@@ -14,6 +14,7 @@ from .extract import (cfg, chunk_text, classify, excluded, extract_imports, extr
 def git(*args):
     try:
         out = subprocess.run(["git", "-C", str(config.project_root()), *args], capture_output=True, text=True,
+                             **config.NO_WINDOW,
                              timeout=20)
         return out.stdout.strip() if out.returncode == 0 else None
     except (OSError, subprocess.SubprocessError):

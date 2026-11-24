@@ -17,6 +17,12 @@ import os
 import subprocess
 from pathlib import Path
 
+# On Windows a console program started by a process that has no console (a hook
+# launched by a desktop app, the detached embedding pass) opens its own visible
+# window. CREATE_NO_WINDOW gives the child a hidden console instead, which its
+# own children inherit.
+NO_WINDOW = {"creationflags": 0x08000000} if os.name == "nt" else {}
+
 APP = "relate-codemem"
 ENV = "RELATE_CODEMEM_"
 SCHEMA_VERSION = 1
@@ -100,7 +106,7 @@ def reset(root=None):
 
 def _git_toplevel(cwd):
     try:
-        out = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+        out = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--show-toplevel"], **NO_WINDOW,
                              capture_output=True, text=True, timeout=10)
         return Path(out.stdout.strip()) if out.returncode == 0 and out.stdout.strip() else None
     except (OSError, subprocess.SubprocessError):

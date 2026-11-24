@@ -214,7 +214,9 @@ def embed_in_background():
         if config.embedding_config()["provider"] == "none":
             return
         env = dict(os.environ, **{config.ENV + "PROJECT": str(config.project_root())})
-        kwargs = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
+        # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP. Not DETACHED_PROCESS: a process
+        # without any console makes every relate call it starts open a window.
+        kwargs = {"creationflags": 0x08000000 | 0x00000200} if os.name == "nt" else {"start_new_session": True}
         with open(store.home() / "memory.log", "a") as out:
             subprocess.Popen([sys.executable, "-m", "relate_codemem", "embed", "--quiet"],
                              stdin=subprocess.DEVNULL, stdout=out, stderr=out, env=env, **kwargs)

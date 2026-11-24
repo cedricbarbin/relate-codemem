@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+### Fixed
+
+- On Windows, console windows no longer flash on every hook and at start-up:
+  relate, git and the background embedding pass are started without a window.
+
 ## 0.1.0 - 2026-11-24
 
 First public version. Early development: interfaces may change before 1.0.

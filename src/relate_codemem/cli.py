@@ -155,7 +155,7 @@ def main(argv=None):
         elif args.cmd == "mcp":
             store.ensure_store()
             return subprocess.call([store.relate_bin(), "serve", "--mcp", "stdio", "--database",
-                                    str(store.db()), "--read-only=live"])
+                                    str(store.db()), "--read-only=live"], **config.NO_WINDOW)
     except (store.RelateError, config.ConfigError, subprocess.SubprocessError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

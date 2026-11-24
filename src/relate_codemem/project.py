@@ -162,7 +162,8 @@ def doctor(project=True):
     print(f"relate-codemem {__version__}  (python {sys.version.split()[0]}, {sys.platform})")
     good = True
     try:
-        out = subprocess.run([store.relate_bin(), "--version"], capture_output=True, text=True, timeout=20)
+        out = subprocess.run([store.relate_bin(), "--version"], capture_output=True, text=True, timeout=20,
+                             **config.NO_WINDOW)
         good &= _check(out.returncode == 0, "relate", out.stdout.strip().splitlines()[0] if out.stdout else "")
     except (store.RelateError, OSError, subprocess.SubprocessError, IndexError):
         fix = ('powershell -ExecutionPolicy ByPass -c "irm https://relatedb.ai/install.ps1 | iex"'
