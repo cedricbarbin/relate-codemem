@@ -1,0 +1,48 @@
+{
+  "decisions_dirs": [
+    "docs/decisions",
+    "docs/adr",
+    "adr"
+  ],
+  "meetings_dirs": [
+    "docs/meetings",
+    "meetings"
+  ],
+  "exclude_dirs": [
+    ".git",
+    ".claude",
+    "node_modules",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "dist",
+    "build",
+    "target",
+    ".next",
+    ".nuxt",
+    "vendor",
+    ".idea",
+    ".vscode",
+    "coverage",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".tox",
+    "DerivedData",
+    "Pods",
+    ".gradle"
+  ],
+  "exclude_files": [
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+    "Cargo.lock",
+    "uv.lock",
+    "composer.lock",
+    "Gemfile.lock"
+  ],
+  "max_file_bytes": 500000,
+  "chunk_chars": 1800,
+  "max_prompt_chars": 6000,
+  "max_reply_chars": 8000
+}

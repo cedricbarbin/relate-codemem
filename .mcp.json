@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "relate-codemem": {
+      "command": "relate-codemem",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
