@@ -13,6 +13,9 @@ earlier sessions, and lets Claude search it.
   Claude Code hooks, whether or not the model thinks about it.
 - **CLAUDE.md reads.** A section of `CLAUDE.md` tells Claude what the memory
   holds and when it is worth querying; Claude decides.
+- **Real parsing where it is installed.** With the optional `parse` extra,
+  tree-sitter gives exact symbol extents and nested names in thirteen
+  languages; regular expressions cover the rest.
 - **Hybrid search.** relate's full-text index and its vector index, fused by
   reciprocal rank. Embeddings are computed locally by default.
 - **Everything stays in the project.** The store is a directory under
@@ -32,7 +35,7 @@ relate-codemem is on [PyPI](https://pypi.org/project/relate-codemem/). With
 the machine, on any platform:
 
 ```bash
-uv tool install --python 3.12 "relate-codemem[local]"
+uv tool install --python 3.12 "relate-codemem[local,parse]"
 ```
 
 ```bash
@@ -40,8 +43,10 @@ relate-codemem setup --embeddings local
 ```
 
 `setup` records the default embedding provider for this machine and adds the
-`/relate-codemem-init` skill to Claude Code. Install plain `relate-codemem`,
-without `[local]`, if you will not use local embeddings.
+`/relate-codemem-init` skill to Claude Code. Both extras are optional: `local`
+adds local embeddings, `parse` adds syntax-tree parsing of code with
+[tree-sitter](https://tree-sitter.github.io/) (about 20 to 35 MB). Without
+`parse`, symbols are extracted with regular expressions.
 
 To have the prerequisites installed for you, run the installer from a
 checkout. On macOS and Linux:

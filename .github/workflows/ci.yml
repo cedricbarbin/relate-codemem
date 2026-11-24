@@ -35,5 +35,6 @@ jobs:
           irm https://relatedb.ai/install.ps1 | iex
           "$env:LOCALAPPDATA\Programs\relate" | Out-File -FilePath $env:GITHUB_PATH -Append
 
+      # Python 3.12 runs with tree-sitter, 3.10 without: both extraction paths on every platform.
       - name: Test
-        run: uv run --no-project --python ${{ matrix.python }} --with pytest --with-editable . pytest -q
+        run: uv run --no-project --python ${{ matrix.python }} --with pytest --with-editable "${{ matrix.python == '3.12' && '.[parse]' || '.' }}" pytest -q

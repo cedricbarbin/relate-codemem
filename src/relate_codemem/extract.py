@@ -6,7 +6,7 @@ import posixpath
 import re
 from pathlib import Path
 
-from . import config
+from . import config, parse
 
 CODE_EXT = {
     ".py": "python", ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript",
@@ -184,8 +184,10 @@ def regex_symbols(text, lang):
 
 def extract_symbols(path, text, lang, rev):
     try:
-        raw = python_symbols(text) if lang == "python" else regex_symbols(text, lang)
+        raw = python_symbols(text) if lang == "python" else parse.symbols(path, text, lang)
     except (SyntaxError, ValueError, RecursionError):
+        raw = None
+    if raw is None:
         raw = regex_symbols(text, lang)
     seen, out = {}, []
     for s in raw[:2000]:
@@ -194,7 +196,7 @@ def extract_symbols(path, text, lang, rev):
         out.append({"id": sid, "path": path, "rev": rev, "name": s["name"],
                     "qualname": s["qualname"], "kind": s["kind"], "startLine": s["startLine"],
                     "endLine": s["endLine"], "signature": s["signature"],
-                    "hash": sha(s["body"])[:16], "title": f"{s['kind']} {s['qualname']}",
+                    "hash": sha(s["body"])[:16], "title": f"{s['kind']} {s['qualname']}", "top": s.get("top"),
                     "text": (s["signature"] + ("\n" + s["doc"] if s["doc"] else ""))[:900],
                     "terms": split_terms(s["qualname"], path)})
     return out

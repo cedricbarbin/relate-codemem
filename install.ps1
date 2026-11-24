@@ -74,10 +74,11 @@ $Source = "git+$RepoUrl"
 if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "pyproject.toml"))) { $Source = $PSScriptRoot }
 Write-Host ""
 Write-Host "Installing relate-codemem from $Source ..."
+$Parse = "tree-sitter-language-pack>=0.13,<1"   # syntax-tree parsing of code
 if ($Embeddings -eq "local") {
-    uv tool install --python 3.12 --force --with "fastembed>=0.4" $Source
+    uv tool install --python 3.12 --force --with "fastembed>=0.4" --with $Parse $Source
 } else {
-    uv tool install --python 3.12 --force $Source
+    uv tool install --python 3.12 --force --with $Parse $Source
 }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 uv tool update-shell | Out-Null

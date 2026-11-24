@@ -8,7 +8,7 @@ import urllib.request
 from importlib import resources
 from pathlib import Path
 
-from . import __version__, config, store
+from . import __version__, config, parse, store
 
 HOOK_COMMAND = "relate-codemem hook"
 HOOKS = {
@@ -173,6 +173,7 @@ def doctor(project=True):
                    "Claude Code hooks call `relate-codemem hook`; run `uv tool update-shell` and restart the terminal")
     _check(shutil.which("git"), "git", "found" if shutil.which("git") else "not found (file listing falls back to a directory walk)")
 
+    _check(True, "code parser", parse.describe())
     try:
         ecfg = config.embedding_config()
     except config.ConfigError as exc:

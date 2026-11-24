@@ -36,10 +36,16 @@ and are skipped when the `relate` binary is absent. They use a deterministic
 
 ## Adding a language
 
-Symbols and imports for languages other than Python are extracted with
-regular expressions, in `PATTERNS` and `IMPORT_RX` of
-`src/relate_codemem/extract.py`. Add the file extension to `CODE_EXT`, the
-patterns for the language, and a test with a short sample.
+Add the file extension to `CODE_EXT` of `src/relate_codemem/extract.py`, then
+describe the language on both extraction paths, each with a test on a short
+sample:
+
+- regular expressions: `PATTERNS` and `IMPORT_RX` in `extract.py`;
+- tree-sitter: an entry in `NODES` of `src/relate_codemem/parse.py`, mapping
+  the grammar's declaration node types to symbol kinds.
+
+Package-level name resolution (same package, wildcard imports) lives in
+`src/relate_codemem/deps.py`.
 
 ## Pull requests
 

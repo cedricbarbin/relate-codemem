@@ -83,6 +83,30 @@ On each indexing pass:
 `index --full` re-extracts every file without creating revisions, for use
 after an upgrade that changes extraction.
 
+### How code is parsed
+
+Python is parsed with the standard `ast` module. For the other languages
+there are two paths:
+
+- **tree-sitter**, when the `parse` extra is installed (the installers add
+  it). Java, Kotlin, Scala, C#, Go, Rust, JavaScript, TypeScript and TSX, PHP,
+  Ruby, C, C++ and Swift are parsed into syntax trees. A symbol has its exact
+  first and last line, a member is named after its container
+  (`Invoice.total`, `DB.Close`), local and anonymous declarations are left
+  out, and comments and string literals are excluded exactly when names are
+  collected for dependencies.
+- **regular expressions** otherwise, and for every other language: one
+  pattern per declaration line, a symbol ending where the next one starts,
+  and no nesting.
+
+`relate-codemem doctor` shows which path is active. The grammars ship inside
+`tree-sitter-language-pack` (pinned below 1.0: later versions download
+grammars at run time); nothing is fetched while indexing.
+`RELATE_CODEMEM_PARSER=regex` turns tree-sitter off. Switching path changes
+symbol names and extents, so every file is analysed again on the next run:
+no file revision is created, but renamed symbols restart their own history
+and their embeddings are computed again.
+
 ### Dependencies between files
 
 A `DEPENDS_ON` relationship is resolved from declared symbols, not only from

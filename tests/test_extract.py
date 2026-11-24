@@ -50,7 +50,8 @@ def test_symbol_hash_tracks_the_body(project):
     assert changed == {"parse_config"}
 
 
-def test_typescript_symbols(project):
+def test_typescript_symbols(project, monkeypatch):
+    monkeypatch.setenv("RELATE_CODEMEM_PARSER", "regex")       # the pattern path, whatever is installed
     symbols = extract.extract_symbols("web/client.ts", TS, "typescript", 1)
     assert names(symbols) == {("function", "getUserById"), ("class", "HttpClient"), ("method", "get"),
                               ("function", "buildUrl"), ("interface", "UserDto")}

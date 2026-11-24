@@ -217,7 +217,8 @@ def index(paths=None, full=False, session=None, quiet=False):
             # a store indexed before dependency facts existed (or with another format)
             full, paths = True, None
             if not quiet:
-                print("dependency facts are missing or outdated: analysing every file again")
+                print("dependency facts are missing, outdated or built with another parser: "
+                      "analysing every file again")
         facts, old_edges = loaded or ({}, {})
         state = {} if full else load_state()
         if paths:

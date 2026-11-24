@@ -13,6 +13,8 @@ import json
 import posixpath
 import re
 
+from . import parse
+
 VERSION = 1
 
 # origin of an edge, strongest first
@@ -76,12 +78,14 @@ def facts(path, text, lang, symbols, imports):
         # a member function is reached through its type, not by its bare name
         if s["kind"] != "function" or lang not in FUNCTION_EXPORTS or s["name"] in ("main", "init"):
             return False
+        if s.get("top") is not None:        # known exactly when the file went through a parser
+            return s["top"]
         line = lines[s["startLine"] - 1] if 0 < s["startLine"] <= len(lines) else " "
         return line[:1] not in (" ", "\t") and not line.startswith("func (")
 
     exports = {s["name"] for s in symbols if s["kind"] in TYPE_KINDS or top_level_function(s)}
     out["exports"] = sorted(exports)[:MAX_NAMES]
-    code = code_only(text, lang)
+    code = parse.code_only(path, text, lang) or code_only(text, lang)
     if lang == "go":
         used = set(_IDENT.findall(code))
     else:
@@ -205,13 +209,13 @@ def load(path):
         data = json.loads(path.read_text("utf-8"))
     except (OSError, ValueError):
         return None
-    if not isinstance(data, dict) or data.get("version") != VERSION:
+    if not isinstance(data, dict) or data.get("version") != VERSION or data.get("parser") != parse.mode():
         return None
     return data.get("files", {}), {p: dict(e) for p, e in data.get("edges", {}).items()}
 
 
 def save(path, files, edges):
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"version": VERSION, "files": files, "edges": edges},
+    tmp.write_text(json.dumps({"version": VERSION, "parser": parse.mode(), "files": files, "edges": edges},
                               separators=(",", ":")), "utf-8")
     tmp.replace(path)
