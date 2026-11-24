@@ -34,7 +34,7 @@ earlier sessions, and lets Claude search it.
 
 Works on macOS, Linux and Windows.
 
-> **Status: 0.1.x, early development.** The graph model, the command names and
+> **Status: 0.2.x, early development.** The graph model, the command names and
 > the configuration keys may still change before 1.0. Developed and tested on
 > macOS; the Linux and Windows paths are covered by CI only.
 

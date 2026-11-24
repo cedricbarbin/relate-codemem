@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-24
+
+The code analysis was rebuilt in this version. After upgrading, run
+`relate-codemem setup` (new skills) and restart Claude Code (new MCP tools);
+the next `index` analyses every file again without creating revisions. Add
+the `parse` extra to get the call graph.
+
 ### Added
 
 - Optional `parse` extra (Python 3.11 or later): code is parsed with
@@ -72,7 +79,6 @@ All notable changes to this project are documented here. The format follows
 
 - Python: `from package import submodule` now creates a dependency on the
   submodule's file.
-
 - File dependencies are resolved from declared symbols instead of guessed
   paths: same-package references without an import (Java, Kotlin, Scala, C#,
   PHP, Go), wildcard imports, fully qualified names, types in any source root,

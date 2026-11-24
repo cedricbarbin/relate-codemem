@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "relate-codemem"
-version = "0.1.1"
+version = "0.2.0"
 description = "Long-term project memory for Claude Code on the relate embedded graph database: code index with hashes and revisions, docs, decisions, meetings and sessions, with hybrid search."
 readme = "README.md"
 license = "MIT"
