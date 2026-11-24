@@ -6,13 +6,6 @@ All notable changes to this project are documented here. The format follows
 
 ## Unreleased
 
-### Fixed
-
-- Files with CRLF line endings are normalised before hashing and parsing.
-- A read that hits an abnormal exit of the relate binary (seen on Windows) is retried.
-- On Windows, reads open the store normally under the writer lock instead of
-  read-only, which crashed or hung intermittently with relate 1.2.0.
-
 ## 0.1.0 - 2026-11-24
 
 First public version. Early development: interfaces may change before 1.0.
@@ -34,3 +27,10 @@ First public version. Early development: interfaces may change before 1.0.
 - `setup`, `init`, `doctor` and `config` commands; installers for macOS,
   Linux and Windows; global Claude Code skill `/relate-codemem-init`.
 - Read-only MCP server on the project store.
+
+### Fixed
+
+- Files with CRLF line endings are normalised before hashing and parsing.
+- A read that hits an abnormal exit of the relate binary (seen on Windows) is retried.
+- On Windows, reads open the store normally under the writer lock instead of
+  read-only, which crashed or hung intermittently with relate 1.2.0.

@@ -45,3 +45,14 @@ patterns for the language, and a test with a short sample.
 
 Keep each pull request to one subject, describe what changed and why, and add
 a line to `CHANGELOG.md` under "Unreleased".
+
+## Releasing
+
+Maintainers only.
+
+1. Set the version in `pyproject.toml` and `src/relate_codemem/__init__.py`,
+   and move the "Unreleased" entries of `CHANGELOG.md` under the new version.
+2. Merge, then publish a GitHub release whose tag is `v<version>`.
+3. The `Publish` workflow builds the package and waits for approval on the
+   `pypi` environment; once approved it uploads to PyPI through trusted
+   publishing. No token is stored anywhere.
