@@ -118,7 +118,9 @@ def test_calls_are_stored_and_follow_other_files(project, monkeypatch, capsys):
     assert "Customer.save" not in callees() and "Customer" in callees()
 
 
-    # another analysis mechanism (here: no parser, so no call graph) leaves no stale call behind
-    monkeypatch.setenv("RELATE_CODEMEM_PARSER", "regex")
-    indexer.index(quiet=True)
-    assert store.read("MATCH ()-[r:CALLS]->() RETURN count(r) AS n") == [{"n": 0}]
+    # a link left by an older resolution rule, from a method that makes no call: a full run clears it
+    store.write("MATCH (a:Symbol {qualname: 'Base.audit'}), (b:Symbol {qualname: 'Dates.parse'}) "
+                "MERGE (a)-[r:CALLS]->(b) SET r.via = 'name'")
+    indexer.index(full=True, quiet=True)
+    assert store.read("MATCH (:Symbol {qualname: 'Base.audit'})-[r:CALLS]->() RETURN count(r) AS n") == [{"n": 0}]
+    assert "Customer" in callees()
