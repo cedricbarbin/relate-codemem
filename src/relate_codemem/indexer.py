@@ -184,14 +184,25 @@ SET r.via = d.via
 
 CALLS_SCRIPT = """
 UNWIND $p.paths AS path
-MATCH (:File {path: path})<-[:DEFINED_IN]-(:Symbol)-[r:CALLS]->()
+MATCH (:File {path: path})<-[:DEFINED_IN]-(:Symbol)-[r:CALLS|EXTENDS|OVERRIDES]->()
 DELETE r;
 
 UNWIND $p.calls AS c
 MATCH (a:Symbol {id: c.caller})
 MATCH (b:Symbol {id: c.callee})
 MERGE (a)-[r:CALLS]->(b)
-SET r.via = c.via, r.distance = c.distance, r.candidates = c.candidates
+SET r.via = c.via, r.distance = c.distance, r.candidates = c.candidates, r.inherited = c.inherited;
+
+UNWIND $p.extends AS e
+MATCH (a:Symbol {id: e.child})
+MATCH (b:Symbol {id: e.parent})
+MERGE (a)-[r:EXTENDS]->(b)
+SET r.kind = e.kind;
+
+UNWIND $p.overrides AS o
+MATCH (a:Symbol {id: o.method})
+MATCH (b:Symbol {id: o.above})
+MERGE (a)-[:OVERRIDES]->(b)
 """
 
 
@@ -358,16 +369,24 @@ def index(paths=None, full=False, session=None, quiet=False, rebuild=False):
                 store.write(DEPS_SCRIPT, {"paths": part, "deps": [
                     {"path": path, "target": target, "via": via}
                     for path in part for target, via in sorted(edges[path].items())]})
-            # Calls are resolved after dependencies: a call only reaches what its file can see.
+            # Calls, inheritance and overrides are resolved after dependencies: a symbol only
+            # reaches what its file can see.
             calls = deps.resolve_calls(facts, edges, live)
             # every re-analysed file is rewritten, so that a full run also clears calls it no longer finds
             rewrite = sorted(path for path in set(calls) | set(old_calls) | touched
                              if path in live and (path in touched or calls.get(path) != old_calls.get(path)))
             for start in range(0, len(rewrite), 200):
                 part = rewrite[start:start + 200]
-                store.write(CALLS_SCRIPT, {"paths": part, "calls": [
-                    {"caller": a, "callee": b, "via": via, "distance": distance, "candidates": candidates}
-                    for path in part for a, b, via, distance, candidates in calls.get(path, ())]})
+                store.write(CALLS_SCRIPT, {
+                    "paths": part,
+                    "calls": [{"caller": a, "callee": b, "via": via, "distance": distance,
+                               "candidates": candidates, "inherited": inherited}
+                              for path in part
+                              for a, b, via, distance, candidates, inherited in calls.get(path, {}).get("calls", ())],
+                    "extends": [{"child": a, "parent": b, "kind": kind}
+                                for path in part for a, b, kind in calls.get(path, {}).get("extends", ())],
+                    "overrides": [{"method": a, "above": b}
+                                  for path in part for a, b in calls.get(path, {}).get("overrides", ())]})
             deps.save(deps_path(), facts, edges, calls)
         save_state(new_state)
     summary = (f"indexed {len(changed)} changed file(s), {len(deleted)} deleted, "

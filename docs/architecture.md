@@ -51,7 +51,8 @@ parameters through a JSON file. See
 (FileRevision)-[:REVISION_OF]->(File)        (FileRevision)-[:PREVIOUS]->(FileRevision)
 (Symbol)-[:DEFINED_IN]->(File)               (Chunk)-[:PART_OF]->(File)
 (File)-[:DEPENDS_ON {via}]->(File)           (File)-[:IMPORTS]->(Module)
-(Symbol)-[:CALLS {via, distance, candidates}]->(Symbol)
+(Symbol)-[:CALLS {via, distance, candidates, inherited}]->(Symbol)
+(Symbol)-[:EXTENDS {kind}]->(Symbol)         (Symbol)-[:OVERRIDES]->(Symbol)
 (Decision)-[:DOCUMENTED_IN]->(File)          (Decision|Note)-[:AFFECTS]->(File)
 (Decision|Note)-[:SUPERSEDES]->(same label)  (Decision|Note)-[:MADE_IN]->(Session)
 (Meeting)-[:RECORDED_IN]->(File)             (Person)-[:ATTENDED]->(Meeting)
@@ -164,30 +165,61 @@ says nothing about the class of `x`.
 With the `parse` extra, call sites are read from the syntax tree of every
 language the pack parses, and resolved into `(Symbol)-[:CALLS]->(Symbol)`.
 Methods that share a name are told apart by what the calling file can see:
-a callee must be declared in the file itself (`distance` 0), in a file it
-depends on (1), or in a file those depend on (2). Within that, `via` records
-how the callee was chosen, most certain first:
+a callee is searched in the file itself (`distance` 0) and in the files it
+depends on (1). Beyond that, only the type hierarchy is followed, to any
+depth: when the receiver's type does not declare the method, its supertypes
+are searched, the superclass before the interfaces, and the search stops at
+the first declaration found, which is the one the call runs. Versions
+further up, hidden by that redefinition, are not linked. `inherited` counts
+the levels climbed.
+
+`via` records how the callee was chosen, most certain first:
 
 | `via` | How the callee was found |
 | --- | --- |
 | `receiver` | the receiver's type is written in the file: a type name (`Dates.parse()`), or a variable, parameter or field declared with a type (`Customer c; c.save()`) |
-| `self` | a bare call or a call on `this`/`self`, found in the same class or in a supertype named in its signature |
+| `self` | a bare call, a call on `this`/`self` or on `super`, found in the same class or up its hierarchy |
 | `new` | a construction (`new Customer()`, `Customer()`), linked to the type |
 | `scope` | a bare call to a function of the file or of a file it depends on |
 | `name` | by name only, among visible files; a call with a receiver reaches methods, and a plain function only when the receiver names its file or directory (`store.read()`) |
 
-The number of arguments discards homonyms with another parameter count.
-`candidates` is the number of callees the call still matches: 1 means
-unambiguous, and a call with more than three is not stored. Query reliable
-links with `WHERE r.candidates = 1 AND r.via <> 'name'`.
+The number of arguments selects among overloads and discards homonyms with
+another parameter count. `candidates` is the number of callees the call
+still matches: 1 means unambiguous, and a call with more than three is not
+stored. Query reliable links with `WHERE r.candidates = 1 AND r.via <> 'name'`.
 
-Like dependencies, calls are resolved again over stored facts on every run,
-so an unchanged caller follows a callee that moves, appears or disappears.
+### Inheritance and interfaces
+
+Two more relationships describe the hierarchy itself:
+
+- `(Symbol)-[:EXTENDS {kind}]->(Symbol)` from a type to each supertype named
+  in its signature (`kind` is `implements` where the language has that
+  keyword, and for Rust `impl Trait for Type`; `extends` otherwise).
+- `(Symbol)-[:OVERRIDES]->(Symbol)` from a method to the nearest method above
+  that it redefines. A class that inherits without redefining adds no link.
+
+A call on an interface or an abstract type is linked to the declaration it
+names. What it may run is found by walking `OVERRIDES` downwards:
+
+```cypher
+MATCH (caller:Symbol)-[:CALLS]->(m:Symbol {qualname: 'Repo.save'})
+MATCH (impl:Symbol)-[:OVERRIDES*]->(m)
+RETURN caller.qualname, impl.qualname LIMIT 50
+```
+
+and who may call an implementation by walking it upwards, then `CALLS`.
+`relate-codemem symbol NAME` prints all of these.
+
+Like dependencies, these links are resolved again over stored facts on every
+run, so an unchanged caller follows a callee that moves, appears or
+disappears.
 
 What this does not do: infer types (`var x = factory.create()` has no
-written type), follow return types through chained calls, or pick the
-implementation behind an interface. In dynamic languages most receivers have
-no written type, so more links are `name` links.
+written type), follow return types through chained calls, or say which
+implementation runs at a given call: `OVERRIDES` gives the possible ones.
+Anonymous classes and lambdas are not indexed. Go interfaces, being
+implicit, produce no `EXTENDS` link. In dynamic languages most receivers
+have no written type, so more links are `name` links.
 
 Decisions and notes follow the same no-delete rule on the knowledge side: an
 entry written with the `--slot` of an existing current entry, or with

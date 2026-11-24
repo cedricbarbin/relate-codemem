@@ -15,7 +15,7 @@ import re
 
 from . import parse
 
-VERSION = 2
+VERSION = 3
 
 # origin of an edge, strongest first
 VIA = ("import", "qualified", "wildcard", "package")
@@ -156,7 +156,7 @@ def call_facts(path, text, lang, symbols, sites):
     supertypes written in its type signatures, and its call sites grouped by caller.
 
     `sites` comes from parse.calls."""
-    out = {"defs": [], "supers": {}, "calls": {}}
+    out = {"defs": [], "supers": {}, "implements": {}, "calls": {}}
     callables = []
     for s in symbols:
         owner = s["qualname"].rsplit(".", 1)[0] if "." in s["qualname"] else ""
@@ -166,10 +166,18 @@ def call_facts(path, text, lang, symbols, sites):
         if callable_:
             callables.append(s)
         elif s["kind"] in TYPE_KINDS:
+            # supertypes in the order written: the superclass comes before the interfaces
             after = s["signature"].split(s["name"], 1)[-1]
             supers = [n for n in dict.fromkeys(_CAPITALISED.findall(after)) if n != s["name"]]
             if supers:
                 out["supers"][s["name"]] = supers[:8]
+                contract = re.split(r"\bimplements\b", after, maxsplit=1)
+                if len(contract) == 2:
+                    out["implements"][s["name"]] = [n for n in supers if n in _CAPITALISED.findall(contract[1])]
+    if lang == "rust":                  # impl Trait for Type
+        for trait, kind in re.findall(r"\bimpl(?:<[^>{]*>)?\s+(?:\w+::)*(\w+)(?:<[^>{]*>)?\s+for\s+(\w+)", text):
+            out["supers"].setdefault(kind, []).append(trait)
+            out["implements"].setdefault(kind, []).append(trait)
     if not callables or not sites:
         return out
     types = _variable_types(parse.code_only(path, text, lang) or code_only(text, lang))
@@ -201,16 +209,24 @@ CALL_VIA = ("receiver", "self", "new", "scope", "name")
 
 
 def resolve_calls(files, edges, live):
-    """-> {path: [[caller id, callee id, via, distance, candidates], ...]}.
+    """-> {path: {"calls": [...], "extends": [...], "overrides": [...]}}, links leaving the
+    symbols of each file.
 
-    A call can only reach a definition that is visible from its file: in the file itself
-    (distance 0), in a file it depends on (1), or in a file those depend on (2). That is
-    what tells homonyms apart. `via` says how the callee was chosen: "receiver" (the type
-    of the receiver is written in the file), "self" (same class or a supertype), "new"
-    (construction), "scope" (a function in scope) or "name" (by name only, among visible
-    files). A call that still has more than MAX_CANDIDATES homonyms is left out."""
-    by_file = {}           # path -> {"types": {name: [id]}, "methods": {(owner, name): [(id, arity)]},
-    for path, f in files.items():   #         "functions": {name: [(id, arity)]}, "any": {name: [(id, arity)]}}
+    calls: [caller id, callee id, via, distance, candidates, inherited]. A call reaches a
+    definition in its own file (distance 0) or in a file it depends on (1), and from there
+    only what the type hierarchy brings: when a type does not declare the method, its
+    supertypes are searched, superclass before interfaces, and the first declaration found
+    is the one the call runs. `inherited` counts the levels climbed. `via` says how the
+    callee was chosen: "receiver" (the type of the receiver is written in the file), "self"
+    (same class or a supertype), "new" (construction), "scope" (a function in scope) or
+    "name" (by name only, among visible files). A call that still has more than
+    MAX_CANDIDATES homonyms is left out.
+
+    extends: [type id, supertype id, "extends" | "implements"].
+    overrides: [method id, id of the nearest method above that it redefines]. Following
+    them downwards from an interface method gives what a call on the interface may run."""
+    by_file = {}
+    for path, f in files.items():
         if path not in live or "defs" not in f:
             continue
         index = by_file[path] = {"types": {}, "methods": {}, "functions": {}, "any": {}}
@@ -224,93 +240,116 @@ def resolve_calls(files, edges, live):
                 if kind == "function":
                     index["functions"].setdefault(name, []).append((sid, arity))
 
-    def rings(path):
-        near = [t for t in edges.get(path, ()) if t in by_file]
-        far = {u for t in near for u in edges.get(t, ()) if u in by_file} - set(near) - {path}
-        return [[path] if path in by_file else [], near, sorted(far)]
+    ring_cache = {}
 
-    def types_named(name, around):
-        """[(distance, path)] of the nearest files declaring a type of that name."""
-        for distance, ring in enumerate(around):
+    def rings(path):
+        if path not in ring_cache:
+            ring_cache[path] = [[path] if path in by_file else [],
+                                sorted(t for t in edges.get(path, ()) if t in by_file)]
+        return ring_cache[path]
+
+    def types_named(name, path):
+        """[(distance, path)] of the nearest files, seen from `path`, declaring a type of that name."""
+        for distance, ring in enumerate(rings(path)):
             hits = [(distance, p) for p in ring if name in by_file[p]["types"]]
             if hits:
                 return hits
         return []
 
-    def methods_of(path, type_name, name, depth=0, seen=None):
-        """Methods `name` of a type declared in `path`, looking up its supertypes when absent."""
-        seen = seen or set()
-        if (path, type_name) in seen or depth > 3:
-            return []
+    def fits(arity, count):
+        return count < 0 or arity < 0 or arity == count
+
+    def methods_of(path, type_name, name, count, seen=None, own=True):
+        """-> (methods, levels climbed). The methods `name` that a type declared in `path`
+        answers with: its own, or else the first found in its supertypes, in written order.
+        `own=False` starts at the supertypes (a `super` call, or what a method redefines)."""
+        seen = set() if seen is None else seen
+        if (path, type_name) in seen or len(seen) > 60:
+            return [], 0
         seen.add((path, type_name))
-        found = by_file[path]["methods"].get((type_name, name), [])
-        if found:
-            return found
-        out = []
+        if own:
+            found = [m for m in by_file[path]["methods"].get((type_name, name), ()) if fits(m[1], count)]
+            if found:
+                return found, 0
         for parent in files[path].get("supers", {}).get(type_name, ()):
-            for _, where in types_named(parent, rings(path)[:2]):
-                out += methods_of(where, parent, name, depth + 1, seen)
-        return out
+            for _, where in types_named(parent, path):
+                found, levels = methods_of(where, parent, name, count, seen)
+                if found:
+                    return found, levels + 1
+        return [], 0
 
     result = {}
     for path, f in files.items():
-        if path not in by_file or not f.get("calls"):
+        if path not in by_file:
             continue
-        around = rings(path)
-        distance_of = {p: d for d, ring in enumerate(around) for p in ring}
+        distance_of = {p: d for d, ring in enumerate(rings(path)) for p in ring}
         owners = {sid: owner.rsplit(".", 1)[-1] for sid, _, owner, _, _ in f["defs"]}
         rows = {}
-        for caller, sites in f["calls"].items():
+        for caller, sites in f.get("calls", {}).items():
             for name, kind, target, count in sites:
-                hits, via = [], ""
+                hits, via = [], ""           # hits: (callee id, distance, inherited)
+                own = owners.get(caller, "")
                 if kind == "type":
-                    for distance, where in types_named(target, around):
-                        hits += [(h, distance) for h in methods_of(where, target, name)]
+                    for distance, where in types_named(target, path):
+                        found, levels = methods_of(where, target, name, count)
+                        hits += [(sid, distance, levels) for sid, _ in found]
                     via = "receiver"
                 elif kind == "new":
-                    hits = [((sid, -1), d) for d, where in types_named(name, around) for sid in by_file[where]["types"][name]]
+                    hits = [(sid, d, 0) for d, where in types_named(name, path) for sid in by_file[where]["types"][name]]
                     via = "new"
-                elif kind in ("none", "super"):
-                    own = owners.get(caller, "")
-                    if own and kind == "none":
-                        hits = [(h, 0) for h in methods_of(path, own, name)]
-                    elif own:
-                        for parent in f.get("supers", {}).get(own, ()):
-                            for distance, where in types_named(parent, around[:2]):
-                                hits += [(h, distance) for h in methods_of(where, parent, name)]
+                elif kind in ("none", "super") and own:
+                    found, levels = methods_of(path, own, name, count, own=kind == "none")
+                    hits = [(sid, 0, levels) for sid, _ in found]
                     via = "self"
-                    if not hits and kind == "none":
-                        for distance, ring in enumerate(around):
-                            hits = [(h, distance) for p in ring for h in by_file[p]["functions"].get(name, ())]
-                            if hits:
-                                break
-                        via = "scope"
-                    if not hits and kind == "none":         # Type(...) without `new`
-                        hits = [((sid, -1), d) for d, where in types_named(name, around)
-                                for sid in by_file[where]["types"][name]]
-                        via = "new"
-                if not hits and (kind == "unknown" or (kind == "type" and not types_named(target, around))):
-                    # By name only. A call with a receiver reaches methods; it reaches a plain
-                    # function only when the receiver names its file or directory (a module, a package).
-                    for ring_set in (around[0] + around[1], around[2]):
-                        hits = [((sid, arity), distance_of[p]) for p in ring_set
-                                for sid, arity, member in by_file[p]["any"].get(name, ())
-                                if member or (target and target in (posixpath.splitext(posixpath.basename(p))[0],
-                                                                    posixpath.basename(posixpath.dirname(p))))]
+                if not hits and kind == "none":
+                    for distance, ring in enumerate(rings(path)):
+                        hits = [(sid, distance, 0) for p in ring
+                                for sid, arity in by_file[p]["functions"].get(name, ()) if fits(arity, count)]
                         if hits:
                             break
+                    via = "scope"
+                if not hits and kind == "none":         # Type(...) without `new`
+                    hits = [(sid, d, 0) for d, where in types_named(name, path) for sid in by_file[where]["types"][name]]
+                    via = "new"
+                if not hits and (kind == "unknown" or (kind == "type" and not types_named(target, path))):
+                    # By name only. A call with a receiver reaches methods; it reaches a plain
+                    # function only when the receiver names its file or directory (a module, a package).
+                    found = [(sid, arity, distance_of[p]) for p in distance_of
+                             for sid, arity, member in by_file[p]["any"].get(name, ())
+                             if member or (target and target in (posixpath.splitext(posixpath.basename(p))[0],
+                                                                 posixpath.basename(posixpath.dirname(p))))]
+                    exact = [h for h in found if h[1] == count]      # by name, an unknown arity proves nothing
+                    hits = [(sid, distance, 0) for sid, _, distance in exact or [h for h in found if h[1] < 0]]
                     via = "name"
-                exact = [h for h in hits if h[0][1] == count]
-                hits = exact or [h for h in hits if h[0][1] < 0] or (hits if via != "name" else [])
-                targets = {h[0][0]: h[1] for h in hits if h[0][0] != caller}
+                targets = {sid: (distance, levels) for sid, distance, levels in hits if sid != caller}
                 if not targets or len(targets) > MAX_CANDIDATES:
                     continue
-                for callee, distance in targets.items():
+                for callee, (distance, levels) in targets.items():
                     known = rows.get((caller, callee))
-                    if known is None or CALL_VIA.index(via) < CALL_VIA.index(known[0]):
-                        rows[(caller, callee)] = [via, distance, len(targets)]
-        if rows:
-            result[path] = sorted([a, b, *rest] for (a, b), rest in rows.items())
+                    rank = (CALL_VIA.index(via), levels)       # one link per pair: the most certain, the nearest
+                    if known is None or rank < (CALL_VIA.index(known[0]), known[3]):
+                        rows[(caller, callee)] = [via, distance, len(targets), levels]
+
+        extends, overrides = [], []
+        contracts = f.get("implements", {})
+        for type_name, parents in f.get("supers", {}).items():
+            for child in by_file[path]["types"].get(type_name, ()):
+                for parent in parents:
+                    found = [sid for _, where in types_named(parent, path) for sid in by_file[where]["types"][parent]]
+                    if 0 < len(found) <= MAX_CANDIDATES:
+                        kind = "implements" if parent in contracts.get(type_name, ()) else "extends"
+                        extends += [[child, sid, kind] for sid in found if sid != child]
+        for (type_name, name), methods in by_file[path]["methods"].items():
+            if type_name not in f.get("supers", {}) or name == type_name:
+                continue
+            for sid, arity in methods:
+                above, _ = methods_of(path, type_name, name, arity, own=False)
+                overrides += [[sid, other] for other, _ in above[:MAX_CANDIDATES] if other != sid]
+
+        links = {"calls": sorted([a, b, *rest] for (a, b), rest in rows.items()),
+                 "extends": sorted(extends), "overrides": sorted(overrides)}
+        if any(links.values()):
+            result[path] = links
     return result
 
 

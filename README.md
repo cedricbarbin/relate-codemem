@@ -18,8 +18,9 @@ earlier sessions, and lets Claude search it.
   languages, and a coarser structure for the other languages it knows;
   regular expressions cover the rest.
 - **A call graph that knows about homonyms.** Calls between methods are
-  resolved through the file dependencies, the receiver's written type and
-  the argument count, and each link says how sure it is.
+  resolved through the file dependencies, the receiver's written type, the
+  type hierarchy and the argument count; each link says how sure it is, and
+  the implementations behind an interface call can be queried.
 - **Hybrid search.** relate's full-text index and its vector index, fused by
   reciprocal rank. Embeddings are computed locally by default.
 - **Everything stays in the project.** The store is a directory under

@@ -247,19 +247,26 @@ def show_file(path):
 
 def show_symbol(name):
     link = ("t.qualname + ' <' + t.path + '>' + ' (' + r.via + "
+            "CASE WHEN r.inherited > 0 THEN ', inherited' ELSE '' END + "
             "CASE WHEN r.candidates > 1 THEN ', 1 of ' + toString(r.candidates) ELSE '' END + ')'")
+    other = "t.qualname + ' <' + t.path + '>'"
     rows = store.read("MATCH (s:Symbol) WHERE s.name = $p.name OR s.qualname = $p.name "
                 "RETURN s.kind AS kind, s.qualname AS name, s.path AS path, s.startLine AS line, "
                 "s.signature AS signature, s.changedRev AS changed, "
                 "COLLECT { MATCH (s)-[r:CALLS]->(t:Symbol) RETURN " + link + " ORDER BY t.qualname LIMIT 40 } AS calls, "
-                "COLLECT { MATCH (t:Symbol)-[r:CALLS]->(s) RETURN " + link + " ORDER BY t.qualname LIMIT 40 } AS callers "
+                "COLLECT { MATCH (t:Symbol)-[r:CALLS]->(s) RETURN " + link + " ORDER BY t.qualname LIMIT 40 } AS callers, "
+                "COLLECT { MATCH (s)-[r:EXTENDS]->(t:Symbol) RETURN " + other + " + ' (' + r.kind + ')' ORDER BY t.qualname LIMIT 20 } AS parents, "
+                "COLLECT { MATCH (t:Symbol)-[r:EXTENDS]->(s) RETURN " + other + " ORDER BY t.qualname LIMIT 40 } AS children, "
+                "COLLECT { MATCH (s)-[:OVERRIDES]->(t:Symbol) RETURN " + other + " ORDER BY t.qualname LIMIT 20 } AS above, "
+                "COLLECT { MATCH (t:Symbol)-[:OVERRIDES*1..8]->(s) RETURN DISTINCT " + other + " ORDER BY t.qualname LIMIT 40 } AS below "
                 "ORDER BY s.path, s.startLine LIMIT 50",
                 {"name": name})
     if not rows:
         return search(name, kind="code")
     for s in rows:
         print(f"{s['path']}:{s['line']}  {s['kind']} {s['name']}  (changed at r{s['changed']})\n    {s['signature']}")
-        for label, key in (("calls", "calls"), ("called by", "callers")):
+        for label, key in (("extends", "parents"), ("extended by", "children"), ("overrides", "above"),
+                           ("overridden by", "below"), ("calls", "calls"), ("called by", "callers")):
             for line in s[key]:
                 print(f"    {label}: {line}")
 
@@ -299,8 +306,11 @@ MODEL_DOC = """Graph model (labels, key property, relationships)
   (FileRevision)-[:REVISION_OF]->(File)     (FileRevision)-[:PREVIOUS]->(FileRevision)
   (Symbol)-[:DEFINED_IN]->(File)            (Chunk)-[:PART_OF]->(File)
   (File)-[:DEPENDS_ON {via}]->(File)        (File)-[:IMPORTS]->(Module)
-  (Symbol)-[:CALLS {via, distance, candidates}]->(Symbol)   needs the tree-sitter extra
+  (Symbol)-[:CALLS {via, distance, candidates, inherited}]->(Symbol)   needs the tree-sitter extra
   CALLS.via = receiver | self | new | scope | name (by name only); candidates > 1 = ambiguous
+  (Symbol)-[:EXTENDS {kind: extends|implements}]->(Symbol)   type to supertype
+  (Symbol)-[:OVERRIDES]->(Symbol)   a method to the nearest one above that it redefines;
+    what a call on an interface method m may run: MATCH (impl)-[:OVERRIDES*]->(m)
   DEPENDS_ON.via = import | qualified | wildcard | package (same package, no import)
   (Decision)-[:DOCUMENTED_IN]->(File)       (Decision|Note)-[:AFFECTS]->(File)
   (Decision|Note)-[:SUPERSEDES]->(same)     (Decision|Note)-[:MADE_IN]->(Session)

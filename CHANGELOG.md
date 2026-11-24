@@ -21,8 +21,12 @@ All notable changes to this project are documented here. The format follows
 
 - Call graph (with the `parse` extra): `(Symbol)-[:CALLS]->(Symbol)`,
   resolved through what the calling file can see, the receiver's written
-  type, inheritance and the argument count. Each link carries `via`,
-  `distance` and `candidates`. `relate-codemem symbol NAME` lists calls and
+  type and the argument count. Beyond direct dependencies only the type
+  hierarchy is followed, to any depth, stopping at the first declaration
+  found. Each link carries `via`, `distance`, `candidates` and `inherited`.
+  `(Symbol)-[:EXTENDS]->(Symbol)` and `(Symbol)-[:OVERRIDES]->(Symbol)`
+  describe the hierarchy, so the implementations a call on an interface may
+  run can be queried. `relate-codemem symbol NAME` lists calls and
   callers. A full re-analysis clears the calls it no longer finds.
 
 - `index --rebuild` deletes everything derived from file contents (symbols,
