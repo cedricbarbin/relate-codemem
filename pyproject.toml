@@ -26,7 +26,7 @@ dependencies = []
 [project.optional-dependencies]
 # Local embeddings (no service, no API key). Other providers need no extra.
 local = ["fastembed>=0.4"]
-parse = ["tree-sitter-language-pack>=0.13,<1"]
+parse = ["tree-sitter-language-pack>=1.25,<2; python_version >= '3.11'"]
 dev = ["pytest>=8"]
 
 [project.scripts]

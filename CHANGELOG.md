@@ -8,12 +8,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- Optional `parse` extra: code is parsed with tree-sitter (Java, Kotlin,
-  Scala, C#, Go, Rust, JavaScript, TypeScript, PHP, Ruby, C, C++, Swift).
-  Symbols get exact extents and nested names (`Invoice.total`), and comments
-  and strings are excluded exactly from dependency analysis. Regular
-  expressions remain the fallback; `RELATE_CODEMEM_PARSER=regex` forces them.
-  The installers add the extra, and `doctor` reports the active parser.
+- Optional `parse` extra (Python 3.11 or later): code is parsed with
+  tree-sitter. Thirteen languages (Java, Kotlin, Scala, C#, Go, Rust,
+  JavaScript, TypeScript, PHP, Ruby, C, C++, Swift) get exact extents and
+  nested names (`Invoice.total`); other languages known to
+  `tree-sitter-language-pack` and without patterns (Zig, Haskell, OCaml...)
+  are now indexed through its generic extraction. Comments and strings are
+  excluded exactly from dependency analysis. Grammars are downloaded on first
+  use into the user cache. Regular expressions remain the fallback;
+  `RELATE_CODEMEM_PARSER=regex` forces them. The installers add the extra,
+  and `doctor` reports the active parser.
 
 ### Changed
 

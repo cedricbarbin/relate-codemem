@@ -80,3 +80,15 @@ def test_turning_the_parser_off_falls_back_and_reanalyses(project, monkeypatch):
     assert parse.mode() == "regex" and deps.load(indexer.deps_path()) is None
     assert ("method", "total", 10, 14) in listing("Invoice.java", JAVA, "java")
     assert indexer.index(quiet=True) == (1, 0)                       # same content, analysed again
+
+
+def test_languages_without_table_or_patterns_use_the_generic_extraction(project):
+    assert extract.classify("src/main.zig") == ("code", "zig")
+    assert extract.classify("data/table.csv") is None                # a format the pack parses, not code
+    found = [(kind, name) for kind, name, _, _ in listing("src/main.zig", "pub fn top() void {}\n", "zig")]
+    assert ("function", "top") in found
+
+
+def test_languages_with_patterns_keep_them(project):
+    text = "defmodule A.B do\n  def f(x), do: x\nend\n"
+    assert [(kind, name) for kind, name, _, _ in listing("a.ex", text, "elixir")] == [("defmodule", "A.B"), ("function", "f")]

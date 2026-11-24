@@ -82,7 +82,7 @@ else
 fi
 say ""
 say "Installing relate-codemem from $SOURCE ..."
-PARSE="tree-sitter-language-pack>=0.13,<1"   # syntax-tree parsing of code
+PARSE="tree-sitter-language-pack>=1.25,<2"   # syntax-tree parsing of code
 if [ "$EMBEDDINGS" = local ]; then
   uv tool install --python 3.12 --force --with "fastembed>=0.4" --with "$PARSE" "$SOURCE"
 else

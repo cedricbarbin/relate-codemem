@@ -1,11 +1,16 @@
 """Syntax-tree extraction with tree-sitter, when the optional `parse` extra is installed.
 
 Without it every function here reports "not available" and the callers keep their
-regular-expression path. With it, symbols get exact extents and nesting (a method is
-`Type.method`), and comments and string literals are told apart from code exactly.
+regular-expression path. With it:
 
-The package provides the parsers; what a class or a method looks like in each grammar
-is described by the tables below, so a language is supported once it has an entry.
+- the languages described in NODES get exact symbol extents and nesting (a method is
+  `Type.method`), from tables that say what a class or a method looks like in each grammar;
+- any other language the pack knows, and for which there are no patterns, gets the
+  pack's own generic structure extraction, which is coarser;
+- comments and string literals are told apart from code exactly, in every language.
+
+The pack downloads a grammar the first time a language is met and keeps it in the
+user cache; when that fails (no network), the file falls back to patterns.
 """
 from pathlib import Path
 
@@ -53,36 +58,98 @@ _NAME_TYPES = {"identifier", "type_identifier", "simple_identifier", "name", "co
 _FUNCTION_VALUES = {"arrow_function", "function_expression", "function", "generator_function"}
 _SKIP_FILES = {".vue", ".svelte"}      # a script embedded in markup is not a source file of that language
 
+# our language names that differ from the pack's
+_PACK_NAMES = {"shell": "bash"}
+# formats the pack can parse but that are data or markup, not code worth indexing as such
+_NOT_CODE = {"csv", "tsv", "psv", "json", "json5", "jsonc", "yaml", "toml", "xml", "ini", "properties", "markdown",
+             "markdown_inline", "vimdoc", "diff", "gitignore", "gitattributes", "gitcommit", "git_config",
+             "git_rebase", "requirements", "po", "bibtex", "latex", "rst", "org", "comment", "regex", "printf",
+             "passwd", "ssh_config", "editorconfig", "dotenv", "html", "css", "scss", "svg", "dtd", "http",
+             "jsdoc", "luadoc", "phpdoc", "doxygen", "re2c", "ungrammar", "query", "hosts", "udev", "desktop"}
+_GENERIC_KINDS = {"class": "class", "struct": "struct", "enum": "enum", "interface": "interface", "trait": "trait",
+                  "module": "module", "function": "function", "method": "method", "impl": "impl",
+                  "namespace": "namespace", "type": "type", "union": "struct", "macro": "function"}
+
+_pack = None
 _parsers = {}
+_detected = {}
 
 
 def enabled():
     return (config.setting("PARSER")[0] or "auto").lower() not in ("regex", "off", "none")
 
 
+def cache_dir():
+    return config.user_cache_dir() / "tree-sitter"
+
+
+def _load():
+    """The language pack module, configured to keep its grammars in our cache, or None."""
+    global _pack
+    if _pack is None:
+        try:
+            import tree_sitter_language_pack as pack
+            pack.configure(pack.PackConfig(cache_dir=str(cache_dir())))
+            _pack = pack if hasattr(pack, "process") else False
+        except Exception:        # the extra is absent, or an older pack without this interface
+            _pack = False
+    return (_pack or None) if enabled() else None
+
+
+def _pack_name(lang, path=""):
+    if lang == "typescript" and path.endswith("x"):
+        return "tsx"
+    return _PACK_NAMES.get(lang, lang)
+
+
 def _parser(lang, path=""):
-    name = "tsx" if lang == "typescript" and path.endswith("x") else lang
-    if name not in NODES or not enabled() or Path(path).suffix.lower() in _SKIP_FILES:
+    name = _pack_name(lang, path)
+    pack = _load()
+    if pack is None or Path(path).suffix.lower() in _SKIP_FILES:
         return None, name
     if name not in _parsers:
         try:
-            from tree_sitter_language_pack import get_parser
-            _parsers[name] = get_parser(name)
-        except Exception:        # the extra is absent, or this grammar is not in the installed pack
+            _parsers[name] = pack.get_parser(name)      # downloads the grammar on first use
+        except Exception:        # unknown language, or the download failed
             _parsers[name] = None
     return _parsers[name], name
 
 
-def available(lang="java"):
-    return _parser(lang)[0] is not None
+def available():
+    return _load() is not None
+
+
+def curated(lang, path=""):
+    return _pack_name(lang, path) in NODES
+
+
+def detect(path):
+    """A language name for a file the extension tables do not know, or None."""
+    pack = _load()
+    suffix = Path(path).suffix.lower() or Path(path).name
+    if pack is None:
+        return None
+    if suffix not in _detected:
+        try:
+            name = pack.detect_language(path)
+        except Exception:
+            name = None
+        _detected[suffix] = None if name in _NOT_CODE else name
+    return _detected[suffix]
 
 
 def describe():
     if not enabled():
         return "regular expressions (tree-sitter turned off)"
-    if not available():
-        return "regular expressions (install the `parse` extra for tree-sitter)"
-    return "tree-sitter: " + ", ".join(sorted(n for n in NODES if _parser(n)[0] is not None))
+    pack = _load()
+    if pack is None:
+        return "regular expressions (install the `parse` extra, on Python 3.11 or later, for tree-sitter)"
+    try:
+        cached = len(pack.downloaded_languages())
+        return (f"tree-sitter, {len(pack.manifest_languages())} languages available, {cached} grammar(s) "
+                f"downloaded in {cache_dir()}")
+    except Exception as exc:
+        return f"tree-sitter (the language list is unreachable: {exc})"
 
 
 def _text(node):
@@ -137,6 +204,8 @@ def symbols(path, text, lang):
     parser, name = _parser(lang, path)
     if parser is None:
         return None
+    if name not in NODES:
+        return _generic_symbols(name, text)
     table = NODES[name]
     tree = parser.parse(text.encode("utf-8", errors="replace"))
     lines = text.splitlines()
@@ -182,6 +251,45 @@ def symbols(path, text, lang):
     return out
 
 
+def _generic_symbols(name, text):
+    """Symbols from the pack's own structure extraction, for languages without a table."""
+    try:
+        result = _pack.process(text, _pack.ProcessConfig(language=name))
+    except Exception:
+        return None
+    lines = text.splitlines()
+    out = []
+
+    def visit(items, prefix, inside):
+        for item in items:
+            kind = _GENERIC_KINDS.get(str(item.kind).split(".")[-1].lower())
+            declared = (item.name or "").strip()
+            scope, within = prefix, inside
+            if kind and declared and item.span is not None:
+                qual = f"{prefix}.{declared}" if prefix and not declared.startswith(prefix + ".") else declared
+                if kind == "impl":
+                    scope, within = declared, True
+                elif kind != "namespace":
+                    start, end = item.span.start_line + 1, item.span.end_line + 1
+                    if kind == "function" and inside:
+                        kind = "method"
+                    doc, j = [], start - 2
+                    while 0 <= j < len(lines) and len(doc) < 8 and lines[j].lstrip()[:2] in ("//", "/*", "--", "##", "# ", "* ", "%%"):
+                        doc.insert(0, lines[j].strip().lstrip("/*#-%! ").rstrip("*/ "))
+                        j -= 1
+                    out.append({"name": declared.split(".")[-1], "qualname": qual, "kind": kind,
+                                "startLine": start, "endLine": max(end, start), "top": not inside,
+                                "signature": (item.signature or (lines[start - 1] if start <= len(lines) else "")).strip()[:300],
+                                "doc": " ".join(d for d in doc if d)[:600],
+                                "body": "\n".join(lines[start - 1:end])})
+                    if kind in CONTAINERS:
+                        scope, within = qual, within or kind != "module"
+            visit(item.children, scope, within)
+
+    visit(result.structure, "", False)
+    return out or None
+
+
 def code_only(path, text, lang):
     """The source with comments and string literals blanked out, or None without a parser."""
     parser, _ = _parser(lang, path)
@@ -208,5 +316,5 @@ def code_only(path, text, lang):
 
 def mode():
     """What the stored facts were built with; a change means every file is analysed again."""
-    return "tree-sitter" if available() else "regex"
+    return "tree-sitter 1" if available() else "regex"
 

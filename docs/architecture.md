@@ -86,26 +86,39 @@ after an upgrade that changes extraction.
 ### How code is parsed
 
 Python is parsed with the standard `ast` module. For the other languages
-there are two paths:
+there are three sources, in this order:
 
-- **tree-sitter**, when the `parse` extra is installed (the installers add
-  it). Java, Kotlin, Scala, C#, Go, Rust, JavaScript, TypeScript and TSX, PHP,
-  Ruby, C, C++ and Swift are parsed into syntax trees. A symbol has its exact
-  first and last line, a member is named after its container
-  (`Invoice.total`, `DB.Close`), local and anonymous declarations are left
-  out, and comments and string literals are excluded exactly when names are
-  collected for dependencies.
-- **regular expressions** otherwise, and for every other language: one
-  pattern per declaration line, a symbol ending where the next one starts,
-  and no nesting.
+1. **tree-sitter with a table**, when the `parse` extra is installed (the
+   installers add it; Python 3.11 or later). Java, Kotlin, Scala, C#, Go,
+   Rust, JavaScript, TypeScript and TSX, PHP, Ruby, C, C++ and Swift are
+   parsed into syntax trees and read through tables that say what a
+   declaration looks like in each grammar. A symbol has its exact first and
+   last line, a member is named after its container (`Invoice.total`,
+   `DB.Close`), and local and anonymous declarations are left out.
+2. **regular expressions**, for the languages that have patterns (Elixir,
+   Lua, SQL, shell, Dart...) and for every language when the extra is
+   absent: one pattern per declaration line, a symbol ending where the next
+   one starts, no nesting.
+3. **tree-sitter without a table**, for any other language the pack knows
+   (Zig, Haskell, OCaml, Julia...): the pack's own structure extraction. It
+   is coarser (some declarations are missed, depending on the language) but
+   it makes those files and their main symbols searchable. Files of such
+   languages are only indexed when the extra is installed.
 
-`relate-codemem doctor` shows which path is active. The grammars ship inside
-`tree-sitter-language-pack` (pinned below 1.0: later versions download
-grammars at run time); nothing is fetched while indexing.
-`RELATE_CODEMEM_PARSER=regex` turns tree-sitter off. Switching path changes
-symbol names and extents, so every file is analysed again on the next run:
-no file revision is created, but renamed symbols restart their own history
-and their embeddings are computed again.
+With the extra, comments and string literals are excluded exactly, in every
+language, when names are collected for dependencies.
+
+`relate-codemem doctor` shows which path is active. The pack knows several
+hundred languages and downloads a grammar the first time one is met, into
+`~/.cache/relate-codemem/tree-sitter` (`%LOCALAPPDATA%\relate-codemem\cache`
+on Windows): about 26 MB once, then a few MB per language. This is native
+code fetched from the pack's release server and checked against its manifest.
+A hook can trigger it when a file of a new language is first edited; without
+network the file falls back to patterns. `RELATE_CODEMEM_PARSER=regex` turns
+tree-sitter off. Switching path changes symbol names and extents, so every
+file is analysed again on the next run: no file revision is created, but
+renamed symbols restart their own history and their embeddings are computed
+again.
 
 ### Dependencies between files
 

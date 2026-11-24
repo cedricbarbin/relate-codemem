@@ -42,7 +42,8 @@ sample:
 
 - regular expressions: `PATTERNS` and `IMPORT_RX` in `extract.py`;
 - tree-sitter: an entry in `NODES` of `src/relate_codemem/parse.py`, mapping
-  the grammar's declaration node types to symbol kinds.
+  the grammar's declaration node types to symbol kinds. Without an entry, a
+  language the pack knows still gets the pack's generic, coarser extraction.
 
 Package-level name resolution (same package, wildcard imports) lives in
 `src/relate_codemem/deps.py`.

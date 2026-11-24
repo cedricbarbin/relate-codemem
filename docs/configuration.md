@@ -101,7 +101,7 @@ creates the README templates. After changing these, run `relate-codemem index`.
 | Variable | Meaning |
 | --- | --- |
 | `RELATE_CODEMEM_HOME` | store directory, instead of `<project>/.claude/relate` |
-| `RELATE_CODEMEM_PARSER` | `auto` (default): tree-sitter when the `parse` extra is installed; `regex`: always regular expressions |
+| `RELATE_CODEMEM_PARSER` | `auto` (default): tree-sitter when the `parse` extra is installed (grammars are downloaded on first use); `regex`: always regular expressions, no download |
 | `RELATE_CODEMEM_PROJECT` | project root, instead of auto-detection |
 
 The project root is, in order: `RELATE_CODEMEM_PROJECT`, Claude Code's

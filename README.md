@@ -15,7 +15,8 @@ earlier sessions, and lets Claude search it.
   holds and when it is worth querying; Claude decides.
 - **Real parsing where it is installed.** With the optional `parse` extra,
   tree-sitter gives exact symbol extents and nested names in thirteen
-  languages; regular expressions cover the rest.
+  languages, and a coarser structure for the other languages it knows;
+  regular expressions cover the rest.
 - **Hybrid search.** relate's full-text index and its vector index, fused by
   reciprocal rank. Embeddings are computed locally by default.
 - **Everything stays in the project.** The store is a directory under
@@ -45,8 +46,9 @@ relate-codemem setup --embeddings local
 `setup` records the default embedding provider for this machine and adds the
 `/relate-codemem-init` skill to Claude Code. Both extras are optional: `local`
 adds local embeddings, `parse` adds syntax-tree parsing of code with
-[tree-sitter](https://tree-sitter.github.io/) (about 20 to 35 MB). Without
-`parse`, symbols are extracted with regular expressions.
+[tree-sitter](https://tree-sitter.github.io/) (Python 3.11 or later). Grammars
+are downloaded on first use, about 26 MB once plus a few MB per language.
+Without `parse`, symbols are extracted with regular expressions.
 
 To have the prerequisites installed for you, run the installer from a
 checkout. On macOS and Linux:
@@ -190,7 +192,8 @@ rebuilds the project's vectors on the next `relate-codemem embed`. All settings:
 uv tool uninstall relate-codemem
 ```
 
-Then delete `~/.claude/skills/relate-codemem-init` and the user configuration
+Then delete `~/.claude/skills/relate-codemem-init`, the cache
+(`~/.cache/relate-codemem`, models and grammars) and the user configuration
 (`~/.config/relate-codemem`, or `%APPDATA%\relate-codemem` on Windows). In a
 project, remove the `relate-codemem hook` entries from `.claude/settings.json`,
 the server from `.mcp.json`, the marked section of `CLAUDE.md` and the

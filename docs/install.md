@@ -20,8 +20,10 @@ relate-codemem setup --embeddings local
 ```
 
 The `parse` extra adds `tree-sitter-language-pack`, which parses code into
-syntax trees; without it symbols are extracted with regular expressions (see
-[architecture](architecture.md)). The `local` extra adds `fastembed` for local embeddings; install plain
+syntax trees; without it, or on Python 3.10, symbols are extracted with
+regular expressions (see [architecture](architecture.md)). The pack downloads
+a grammar the first time a language is met: the first `index` of a project
+needs network access. The `local` extra adds `fastembed` for local embeddings; install plain
 `relate-codemem` if the provider will be `ollama`, `openai` or `none`, and
 pass that provider to `setup`. `setup` accepts the same `--model`, `--url` and
 `--api-key-env` options as the installer below.
@@ -31,7 +33,7 @@ pass that provider to `setup`. `setup` accepts the same `--model`, `--url` and
 To install the development version instead of the latest release:
 
 ```bash
-uv tool install --python 3.12 --with "fastembed>=0.4" --with "tree-sitter-language-pack>=0.13,<1" git+https://github.com/cedricbarbin/relate-codemem
+uv tool install --python 3.12 --with "fastembed>=0.4" --with "tree-sitter-language-pack>=1.25,<2" git+https://github.com/cedricbarbin/relate-codemem
 ```
 
 ## With the installer

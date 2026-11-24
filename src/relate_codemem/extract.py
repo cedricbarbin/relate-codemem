@@ -72,7 +72,8 @@ def classify(path):
         return "code", CODE_EXT[ext]
     if ext in CONFIG_EXT or p.name in CONFIG_NAMES:
         return "config", ext.lstrip(".") or p.name.lower()
-    return None
+    lang = parse.detect(path)        # other languages, when the tree-sitter pack is installed
+    return ("code", lang) if lang else None
 
 
 def excluded(path):
@@ -184,7 +185,12 @@ def regex_symbols(text, lang):
 
 def extract_symbols(path, text, lang, rev):
     try:
-        raw = python_symbols(text) if lang == "python" else parse.symbols(path, text, lang)
+        if lang == "python":
+            raw = python_symbols(text)
+        elif parse.curated(lang, path) or lang not in PATTERNS:
+            raw = parse.symbols(path, text, lang)
+        else:                       # a language with patterns but no table: patterns are the better source
+            raw = None
     except (SyntaxError, ValueError, RecursionError):
         raw = None
     if raw is None:
