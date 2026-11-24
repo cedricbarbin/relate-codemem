@@ -33,7 +33,7 @@ def playground(bolt, http, open_browser):
   Bolt      bolt://127.0.0.1:{bolt}
   HTTP API  http://127.0.0.1:{http}
   user      relate
-  password  the token printed below (kept in {store.db()}.auth-token)
+  password  the token in {store.db()}.auth-token (created on the first run)
 
 Explore it in Neo4j Browser, which runs in your web browser and talks to this machine only:
   {link}

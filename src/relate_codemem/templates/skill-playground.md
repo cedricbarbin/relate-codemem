@@ -20,8 +20,8 @@ Options: `--bolt PORT` (default 7688), `--http PORT` (default 7475),
 Then tell the user:
 
 - the address to connect to (`bolt://127.0.0.1:7688`), the user (`relate`)
-  and that the password is the token the command printed. Do not repeat the
-  token in your reply; point to the command output;
+  and that the password is the token stored in the file the command names
+  (`.claude/relate/db.auth-token`). Do not repeat the token in your reply;
 - a first query to try, for example
   `MATCH (a:Symbol)-[r:CALLS]->(b:Symbol) RETURN a, r, b LIMIT 100` or
   `MATCH (a:Symbol)-[r:EXTENDS]->(b) RETURN a, r, b LIMIT 100`;
