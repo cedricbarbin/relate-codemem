@@ -12,6 +12,7 @@ regular-expression path. With it:
 The pack downloads a grammar the first time a language is met and keeps it in the
 user cache; when that fails (no network), the file falls back to patterns.
 """
+import re
 from pathlib import Path
 
 from . import config
@@ -312,6 +313,55 @@ def code_only(path, text, lang):
         else:
             stack.extend(node.children)
     return data.decode("utf-8", errors="replace")
+
+
+_CALL_NODE = re.compile(r"(?:^|_)(?:call|invocation)(?:_expression)?$|creation_expression$|^new_expression$")
+_CALLEE = re.compile(r"^(?P<receiver>.*?)(?:\?\.|!!\.|\.|->|::)?\s*\$?(?P<name>[A-Za-z_]\w*)\s*(?:<[^()]*>)?\s*[?!]*\s*$", re.S)
+_SELF = {"this", "self", "$this", "Self", "@", "base"}
+
+
+def calls(path, text, lang):
+    """Call sites of a file, or None without a parser.
+
+    -> [(line, name, receiver kind, receiver, argument count or -1)]. The receiver kind is
+    "none" (bare call, or on this/self), "super", "new" (construction of `name`), "name" (the
+    receiver is one identifier, given as receiver) or "expr" (anything longer: a chain, a call).
+    Grammars name their call nodes alike, so this walk needs no table per language."""
+    parser, _ = _parser(lang, path)
+    if parser is None:
+        return None
+    data = text.encode("utf-8", errors="replace")
+    out, stack = [], [parser.parse(data).root_node]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.children)
+        if not node.is_named or not _CALL_NODE.search(node.type) or node.type == "macro_invocation":
+            continue
+        arguments = next((c for c in node.children if "argument" in c.type or c.type == "call_suffix"), None)
+        if arguments is None:
+            continue
+        if arguments.type == "call_suffix":
+            arguments = next((c for c in arguments.children if "argument" in c.type), arguments)
+        callee = data[node.start_byte:arguments.start_byte].decode("utf-8", errors="replace").strip()
+        new = "creation" in node.type or node.type == "new_expression" or callee.startswith("new ")
+        callee = re.sub(r"^(?:new|await|yield|return|throw)\s+", "", callee)
+        m = _CALLEE.match(callee)
+        if not m or len(callee) > 300:
+            continue
+        receiver = re.sub(r"^(?:this|self|\$this)\s*(?:\.|->)\s*", "", m.group("receiver").strip()).lstrip("$")
+        if new:
+            kind, receiver = "new", ""
+        elif not receiver or receiver in _SELF:
+            kind, receiver = "none", ""
+        elif receiver == "super":
+            kind, receiver = "super", ""
+        elif re.fullmatch(r"[A-Za-z_]\w*", receiver):
+            kind = "name"
+        else:
+            kind, receiver = "expr", ""
+        count = sum(1 for c in arguments.named_children if "comment" not in c.type)
+        out.append((node.start_point[0] + 1, m.group("name"), kind, receiver, count))
+    return out
 
 
 def mode():

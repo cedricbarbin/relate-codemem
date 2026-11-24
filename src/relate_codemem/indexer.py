@@ -5,7 +5,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from . import config, deps, store
+from . import config, deps, parse, store
 from .extract import (cfg, chunk_text, classify, excluded, extract_imports, extract_symbols,
                       parse_decision, parse_meeting, sha, split_terms, under)
 
@@ -182,6 +182,19 @@ SET r.via = d.via
 """
 
 
+CALLS_SCRIPT = """
+UNWIND $p.paths AS path
+MATCH (:File {path: path})<-[:DEFINED_IN]-(:Symbol)-[r:CALLS]->()
+DELETE r;
+
+UNWIND $p.calls AS c
+MATCH (a:Symbol {id: c.caller})
+MATCH (b:Symbol {id: c.callee})
+MERGE (a)-[r:CALLS]->(b)
+SET r.via = c.via, r.distance = c.distance, r.candidates = c.candidates
+"""
+
+
 def deps_path():
     return store.home() / "deps.json"
 
@@ -219,7 +232,7 @@ def index(paths=None, full=False, session=None, quiet=False):
             if not quiet:
                 print("dependency facts are missing, outdated or built with another parser: "
                       "analysing every file again")
-        facts, old_edges = loaded or ({}, {})
+        facts, old_edges, old_calls = loaded or ({}, {}, {})
         state = {} if full else load_state()
         if paths:
             targets = []
@@ -280,6 +293,9 @@ def index(paths=None, full=False, session=None, quiet=False):
                     for module in dict.fromkeys(module for module, _ in imports if module):
                         p["imports"].append({"path": path, "module": module[:200]})
                     facts[path] = deps.facts(path, text, lang, symbols, imports)
+                    sites = parse.calls(path, text, lang)
+                    if sites is not None:
+                        facts[path].update(deps.call_facts(path, text, lang, symbols, sites))
                 elif kind in ("doc", "decision", "meeting"):
                     meta, chunks = chunk_text(path, text, kind)
                     if kind == "decision":
@@ -314,7 +330,16 @@ def index(paths=None, full=False, session=None, quiet=False):
                 store.write(DEPS_SCRIPT, {"paths": part, "deps": [
                     {"path": path, "target": target, "via": via}
                     for path in part for target, via in sorted(edges[path].items())]})
-            deps.save(deps_path(), facts, edges)
+            # Calls are resolved after dependencies: a call only reaches what its file can see.
+            calls = deps.resolve_calls(facts, edges, live)
+            rewrite = sorted(path for path in set(calls) | set(old_calls)
+                             if path in live and (path in touched or calls.get(path) != old_calls.get(path)))
+            for start in range(0, len(rewrite), 200):
+                part = rewrite[start:start + 200]
+                store.write(CALLS_SCRIPT, {"paths": part, "calls": [
+                    {"caller": a, "callee": b, "via": via, "distance": distance, "candidates": candidates}
+                    for path in part for a, b, via, distance, candidates in calls.get(path, ())]})
+            deps.save(deps_path(), facts, edges, calls)
         save_state(new_state)
     summary = (f"indexed {len(changed)} changed file(s), {len(deleted)} deleted, "
                f"{counts['symbols']} symbols, {counts['chunks']} chunks")

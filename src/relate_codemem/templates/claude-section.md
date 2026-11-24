@@ -38,7 +38,7 @@ relate-codemem recall                              # open decisions, notes, meet
 relate-codemem search "how are tokens refreshed"   # hybrid: full-text + semantic
 relate-codemem search "retry" --kind decision      # code|doc|decision|meeting|session|note
 relate-codemem file src/api/client.py              # revisions, symbols, dependents, decisions, sessions
-relate-codemem symbol parse_config                 # where a symbol is defined
+relate-codemem symbol parse_config                 # where a symbol is defined, what it calls, what calls it
 relate-codemem query "MATCH (d:Decision) WHERE d.closedAt IS NULL RETURN d.title LIMIT 20"
 relate-codemem schema                              # the graph model, before writing Cypher
 ```

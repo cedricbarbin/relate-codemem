@@ -15,7 +15,7 @@ import re
 
 from . import parse
 
-VERSION = 1
+VERSION = 2
 
 # origin of an edge, strongest first
 VIA = ("import", "qualified", "wildcard", "package")
@@ -97,6 +97,221 @@ def facts(path, text, lang, symbols, imports):
         chains = set(_DOTTED.findall(code))
     out["qualified"] = sorted(chains)[:400]
     return out
+
+
+_VAR_TYPES = (
+    re.compile(r"\b([A-Z]\w*)(?:<[^<>;]*>)?(?:\[\])?[*&]?\s+[*&]?([a-z_]\w*)\s*(?=[=;,)])"),     # Type name
+    re.compile(r"\b([a-z_]\w*)\s*:\s*(?:&\s*)?(?:mut\s+)?\*?([A-Z]\w*)"),                       # name: Type
+    re.compile(r"\b([a-z_]\w*)\s*(?::=|=)\s*(?:new\s+)?&?([A-Z]\w*)\s*(?:<[^<>;]*>)?\s*[({]"),   # name = Type(
+    re.compile(r"\b([a-z_]\w*)\s+\*?([A-Z]\w*)\s*(?=[,){])"),                                   # Go: name Type
+    re.compile(r"\b([a-z_]\w*)\s*=\s*([A-Z]\w*)\.new\b"),                                      # Ruby
+)
+
+
+def _variable_types(code):
+    """{variable: Type} read off declarations, file-wide; a name declared with two types is dropped."""
+    found, clash = {}, set()
+    for index, rx in enumerate(_VAR_TYPES):
+        for a, b in rx.findall(code):
+            name, kind = (b, a) if index == 0 else (a, b)
+            if found.setdefault(name, kind) != kind:
+                clash.add(name)
+    return {name: kind for name, kind in found.items() if name not in clash}
+
+
+def _arity(signature, lang, kind):
+    """Number of parameters in a signature line, or -1 when it cannot be told."""
+    text = signature
+    if lang == "go" and kind == "method":           # func (d *DB) Close(): skip the receiver
+        text = text[text.find(")") + 1:]
+    start = text.find("(")
+    if start < 0:
+        return -1
+    depth, count, seen = 0, 0, False
+    for ch in text[start:]:
+        if ch in "([{<":
+            depth += 1
+        elif ch in ")]}>":
+            depth -= 1
+            if depth == 0:
+                break
+        elif depth == 1:
+            if ch == ",":
+                count += 1
+            elif not ch.isspace():
+                seen = True
+    else:
+        return -1                                   # the parameter list continues on another line
+    params = text[start + 1:text.find(")", start) if depth == 0 and "(" not in text[start + 1:] else None]
+    if re.search(r"\.\.\.|=|\*|\bvararg\b|\bparams\b|\?:", params or text[start:]):
+        return -1                                   # optional or variable parameters
+    count = count + 1 if seen else 0
+    if re.match(r"\s*(?:&?\s*(?:mut\s+)?self|self|cls)\b", text[start + 1:]):
+        count -= 1
+    return count
+
+
+def call_facts(path, text, lang, symbols, sites):
+    """Adds what call resolution needs to the facts of a file: its definitions, the
+    supertypes written in its type signatures, and its call sites grouped by caller.
+
+    `sites` comes from parse.calls."""
+    out = {"defs": [], "supers": {}, "calls": {}}
+    callables = []
+    for s in symbols:
+        owner = s["qualname"].rsplit(".", 1)[0] if "." in s["qualname"] else ""
+        callable_ = s["kind"] in ("function", "method")
+        out["defs"].append([s["id"], s["name"], owner, s["kind"],
+                            _arity(s["signature"], lang, s["kind"]) if callable_ else -1])
+        if callable_:
+            callables.append(s)
+        elif s["kind"] in TYPE_KINDS:
+            after = s["signature"].split(s["name"], 1)[-1]
+            supers = [n for n in dict.fromkeys(_CAPITALISED.findall(after)) if n != s["name"]]
+            if supers:
+                out["supers"][s["name"]] = supers[:8]
+    if not callables or not sites:
+        return out
+    types = _variable_types(parse.code_only(path, text, lang) or code_only(text, lang))
+    for line, name, kind, receiver, count in sites:
+        inside = [s for s in callables if s["startLine"] <= line <= s["endLine"]]
+        if not inside:
+            continue
+        caller = max(inside, key=lambda s: s["startLine"])["id"]
+        target = ""
+        if kind == "name":
+            if receiver[:1].isupper():
+                kind, target = "type", receiver
+            elif receiver in types:
+                kind, target = "type", types[receiver]
+            else:
+                kind, target = "unknown", receiver      # perhaps a module or a package: kept for matching
+        elif kind == "expr":
+            kind = "unknown"
+        entry = [name, kind, target, count]
+        seen = out["calls"].setdefault(caller, [])
+        if entry not in seen and len(seen) < 300:
+            seen.append(entry)
+    return out
+
+
+MAX_CANDIDATES = 3
+# how a callee was chosen, most certain first
+CALL_VIA = ("receiver", "self", "new", "scope", "name")
+
+
+def resolve_calls(files, edges, live):
+    """-> {path: [[caller id, callee id, via, distance, candidates], ...]}.
+
+    A call can only reach a definition that is visible from its file: in the file itself
+    (distance 0), in a file it depends on (1), or in a file those depend on (2). That is
+    what tells homonyms apart. `via` says how the callee was chosen: "receiver" (the type
+    of the receiver is written in the file), "self" (same class or a supertype), "new"
+    (construction), "scope" (a function in scope) or "name" (by name only, among visible
+    files). A call that still has more than MAX_CANDIDATES homonyms is left out."""
+    by_file = {}           # path -> {"types": {name: [id]}, "methods": {(owner, name): [(id, arity)]},
+    for path, f in files.items():   #         "functions": {name: [(id, arity)]}, "any": {name: [(id, arity)]}}
+        if path not in live or "defs" not in f:
+            continue
+        index = by_file[path] = {"types": {}, "methods": {}, "functions": {}, "any": {}}
+        for sid, name, owner, kind, arity in f["defs"]:
+            if kind in TYPE_KINDS:
+                index["types"].setdefault(name, []).append(sid)
+            elif kind in ("function", "method"):
+                index["any"].setdefault(name, []).append((sid, arity, kind == "method" or bool(owner)))
+                if kind == "method" or owner:
+                    index["methods"].setdefault((owner.rsplit(".", 1)[-1], name), []).append((sid, arity))
+                if kind == "function":
+                    index["functions"].setdefault(name, []).append((sid, arity))
+
+    def rings(path):
+        near = [t for t in edges.get(path, ()) if t in by_file]
+        far = {u for t in near for u in edges.get(t, ()) if u in by_file} - set(near) - {path}
+        return [[path] if path in by_file else [], near, sorted(far)]
+
+    def types_named(name, around):
+        """[(distance, path)] of the nearest files declaring a type of that name."""
+        for distance, ring in enumerate(around):
+            hits = [(distance, p) for p in ring if name in by_file[p]["types"]]
+            if hits:
+                return hits
+        return []
+
+    def methods_of(path, type_name, name, depth=0, seen=None):
+        """Methods `name` of a type declared in `path`, looking up its supertypes when absent."""
+        seen = seen or set()
+        if (path, type_name) in seen or depth > 3:
+            return []
+        seen.add((path, type_name))
+        found = by_file[path]["methods"].get((type_name, name), [])
+        if found:
+            return found
+        out = []
+        for parent in files[path].get("supers", {}).get(type_name, ()):
+            for _, where in types_named(parent, rings(path)[:2]):
+                out += methods_of(where, parent, name, depth + 1, seen)
+        return out
+
+    result = {}
+    for path, f in files.items():
+        if path not in by_file or not f.get("calls"):
+            continue
+        around = rings(path)
+        distance_of = {p: d for d, ring in enumerate(around) for p in ring}
+        owners = {sid: owner.rsplit(".", 1)[-1] for sid, _, owner, _, _ in f["defs"]}
+        rows = {}
+        for caller, sites in f["calls"].items():
+            for name, kind, target, count in sites:
+                hits, via = [], ""
+                if kind == "type":
+                    for distance, where in types_named(target, around):
+                        hits += [(h, distance) for h in methods_of(where, target, name)]
+                    via = "receiver"
+                elif kind == "new":
+                    hits = [((sid, -1), d) for d, where in types_named(name, around) for sid in by_file[where]["types"][name]]
+                    via = "new"
+                elif kind in ("none", "super"):
+                    own = owners.get(caller, "")
+                    if own and kind == "none":
+                        hits = [(h, 0) for h in methods_of(path, own, name)]
+                    elif own:
+                        for parent in f.get("supers", {}).get(own, ()):
+                            for distance, where in types_named(parent, around[:2]):
+                                hits += [(h, distance) for h in methods_of(where, parent, name)]
+                    via = "self"
+                    if not hits and kind == "none":
+                        for distance, ring in enumerate(around):
+                            hits = [(h, distance) for p in ring for h in by_file[p]["functions"].get(name, ())]
+                            if hits:
+                                break
+                        via = "scope"
+                    if not hits and kind == "none":         # Type(...) without `new`
+                        hits = [((sid, -1), d) for d, where in types_named(name, around)
+                                for sid in by_file[where]["types"][name]]
+                        via = "new"
+                if not hits and (kind == "unknown" or (kind == "type" and not types_named(target, around))):
+                    # By name only. A call with a receiver reaches methods; it reaches a plain
+                    # function only when the receiver names its file or directory (a module, a package).
+                    for ring_set in (around[0] + around[1], around[2]):
+                        hits = [((sid, arity), distance_of[p]) for p in ring_set
+                                for sid, arity, member in by_file[p]["any"].get(name, ())
+                                if member or (target and target in (posixpath.splitext(posixpath.basename(p))[0],
+                                                                    posixpath.basename(posixpath.dirname(p))))]
+                        if hits:
+                            break
+                    via = "name"
+                exact = [h for h in hits if h[0][1] == count]
+                hits = exact or [h for h in hits if h[0][1] < 0] or (hits if via != "name" else [])
+                targets = {h[0][0]: h[1] for h in hits if h[0][0] != caller}
+                if not targets or len(targets) > MAX_CANDIDATES:
+                    continue
+                for callee, distance in targets.items():
+                    known = rows.get((caller, callee))
+                    if known is None or CALL_VIA.index(via) < CALL_VIA.index(known[0]):
+                        rows[(caller, callee)] = [via, distance, len(targets)]
+        if rows:
+            result[path] = sorted([a, b, *rest] for (a, b), rest in rows.items())
+    return result
 
 
 def _nearest(paths, origin):
@@ -204,18 +419,20 @@ def resolve(files, live):
 
 
 def load(path):
-    """-> (facts by path, edges by path); empty when absent or written by another version."""
+    """-> (facts, edges, call edges), each by path; None when absent or written by another version."""
     try:
         data = json.loads(path.read_text("utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict) or data.get("version") != VERSION or data.get("parser") != parse.mode():
         return None
-    return data.get("files", {}), {p: dict(e) for p, e in data.get("edges", {}).items()}
+    return (data.get("files", {}), {p: dict(e) for p, e in data.get("edges", {}).items()},
+            data.get("calls", {}))
 
 
-def save(path, files, edges):
+def save(path, files, edges, calls):
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"version": VERSION, "parser": parse.mode(), "files": files, "edges": edges},
+    tmp.write_text(json.dumps({"version": VERSION, "parser": parse.mode(), "files": files, "edges": edges,
+                               "calls": calls},
                               separators=(",", ":")), "utf-8")
     tmp.replace(path)

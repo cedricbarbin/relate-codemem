@@ -17,6 +17,9 @@ earlier sessions, and lets Claude search it.
   tree-sitter gives exact symbol extents and nested names in thirteen
   languages, and a coarser structure for the other languages it knows;
   regular expressions cover the rest.
+- **A call graph that knows about homonyms.** Calls between methods are
+  resolved through the file dependencies, the receiver's written type and
+  the argument count, and each link says how sure it is.
 - **Hybrid search.** relate's full-text index and its vector index, fused by
   reciprocal rank. Embeddings are computed locally by default.
 - **Everything stays in the project.** The store is a directory under

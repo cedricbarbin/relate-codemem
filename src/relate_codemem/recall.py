@@ -246,14 +246,22 @@ def show_file(path):
 
 
 def show_symbol(name):
+    link = ("t.qualname + ' <' + t.path + '>' + ' (' + r.via + "
+            "CASE WHEN r.candidates > 1 THEN ', 1 of ' + toString(r.candidates) ELSE '' END + ')'")
     rows = store.read("MATCH (s:Symbol) WHERE s.name = $p.name OR s.qualname = $p.name "
                 "RETURN s.kind AS kind, s.qualname AS name, s.path AS path, s.startLine AS line, "
-                "s.signature AS signature, s.changedRev AS changed ORDER BY s.path, s.startLine LIMIT 50",
+                "s.signature AS signature, s.changedRev AS changed, "
+                "COLLECT { MATCH (s)-[r:CALLS]->(t:Symbol) RETURN " + link + " ORDER BY t.qualname LIMIT 40 } AS calls, "
+                "COLLECT { MATCH (t:Symbol)-[r:CALLS]->(s) RETURN " + link + " ORDER BY t.qualname LIMIT 40 } AS callers "
+                "ORDER BY s.path, s.startLine LIMIT 50",
                 {"name": name})
     if not rows:
         return search(name, kind="code")
     for s in rows:
         print(f"{s['path']}:{s['line']}  {s['kind']} {s['name']}  (changed at r{s['changed']})\n    {s['signature']}")
+        for label, key in (("calls", "calls"), ("called by", "callers")):
+            for line in s[key]:
+                print(f"    {label}: {line}")
 
 
 def status():
@@ -291,6 +299,8 @@ MODEL_DOC = """Graph model (labels, key property, relationships)
   (FileRevision)-[:REVISION_OF]->(File)     (FileRevision)-[:PREVIOUS]->(FileRevision)
   (Symbol)-[:DEFINED_IN]->(File)            (Chunk)-[:PART_OF]->(File)
   (File)-[:DEPENDS_ON {via}]->(File)        (File)-[:IMPORTS]->(Module)
+  (Symbol)-[:CALLS {via, distance, candidates}]->(Symbol)   needs the tree-sitter extra
+  CALLS.via = receiver | self | new | scope | name (by name only); candidates > 1 = ambiguous
   DEPENDS_ON.via = import | qualified | wildcard | package (same package, no import)
   (Decision)-[:DOCUMENTED_IN]->(File)       (Decision|Note)-[:AFFECTS]->(File)
   (Decision|Note)-[:SUPERSEDES]->(same)     (Decision|Note)-[:MADE_IN]->(Session)

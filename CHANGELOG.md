@@ -19,6 +19,12 @@ All notable changes to this project are documented here. The format follows
   `RELATE_CODEMEM_PARSER=regex` forces them. The installers add the extra,
   and `doctor` reports the active parser.
 
+- Call graph (with the `parse` extra): `(Symbol)-[:CALLS]->(Symbol)`,
+  resolved through what the calling file can see, the receiver's written
+  type, inheritance and the argument count. Each link carries `via`,
+  `distance` and `candidates`. `relate-codemem symbol NAME` lists calls and
+  callers.
+
 ### Changed
 
 - File dependencies are resolved from declared symbols instead of guessed
